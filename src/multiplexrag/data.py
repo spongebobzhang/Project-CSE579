@@ -64,3 +64,17 @@ def load_qrels(path: str | Path, min_score: int = 1) -> dict[str, set[str]]:
         doc_id = str(row["doc_id"])
         qrels.setdefault(query_id, set()).add(doc_id)
     return qrels
+
+
+def approximate_token_count(text: str) -> int:
+    stripped = (text or "").strip()
+    if not stripped:
+        return 0
+    return len(stripped.split())
+
+
+def corpus_token_counts(corpus: list[dict]) -> dict[str, int]:
+    return {
+        str(doc["doc_id"]): approximate_token_count(doc.get("content", ""))
+        for doc in corpus
+    }

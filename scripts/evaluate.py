@@ -33,6 +33,8 @@ def main():
     totals = {metric: 0.0 for metric in args.metrics}
     counted = 0
     latencies = []
+    estimated_tokens = []
+    estimated_costs = []
     for row in predictions:
         query_id = str(row["query_id"])
         if query_id not in qrels:
@@ -42,11 +44,19 @@ def main():
         for metric in args.metrics:
             totals[metric] += score_metric(metric, retrieved, relevant)
         latencies.append(float(row.get("latency_ms", 0.0)))
+        estimated_tokens.append(float(row.get("estimated_total_tokens", 0.0)))
+        estimated_costs.append(float(row.get("estimated_cost_usd", 0.0)))
         counted += 1
 
     summary = {metric: (totals[metric] / counted if counted else 0.0) for metric in args.metrics}
     summary["queries_evaluated"] = counted
     summary["avg_latency_ms"] = sum(latencies) / len(latencies) if latencies else 0.0
+    summary["avg_estimated_total_tokens"] = (
+        sum(estimated_tokens) / len(estimated_tokens) if estimated_tokens else 0.0
+    )
+    summary["avg_estimated_cost_usd"] = (
+        sum(estimated_costs) / len(estimated_costs) if estimated_costs else 0.0
+    )
     summary["pred_path"] = args.pred
     summary["qrels_path"] = str(qrels_path)
 

@@ -1,50 +1,44 @@
 # Data Directory Guide
 
-This directory stores all datasets, indexes, and temporary download artifacts used by the MultiplexRAG project.
+This directory stores dataset-specific inputs, indexes, and temporary download artifacts for the MultiplexRAG project.
 
-## Recommended Layout
+## Active Datasets
 
-Each dataset should live in its own subdirectory:
+The project currently treats these as the main experiment datasets:
+
+- `data/scifact/`
+- `data/scidocs/`
+
+Each dataset follows the same layout:
 
 ```text
 data/
   <dataset_name>/
     raw/
     processed/
+    .tmp_beir/
 ```
-
-Example:
-
-```text
-data/
-  scifact/
-    raw/
-      corpus.jsonl
-      queries.jsonl
-      qrels_train.jsonl
-      qrels_test.jsonl
-    processed/
-      corpus.pkl
-      dense.pkl
-      sparse.pkl
-```
-
-This layout allows multiple datasets to coexist without overwriting one another.
 
 ## Folder Purposes
 
 ### `data/<dataset>/raw`
 
-Stores the raw dataset files used by the retrieval pipeline.
+Stores the raw files used by indexing, retrieval, evaluation, and router training.
 
 Typical files:
 
-- `corpus.jsonl`: document collection
-- `queries.jsonl`: query set
-- `qrels_train.jsonl`: training relevance labels
-- `qrels_test.jsonl`: test relevance labels
+- `corpus.jsonl`
+- `queries.jsonl`
+- `qrels_train.jsonl`
+- `qrels_test.jsonl`
 
-These files are the main source inputs for indexing, retrieval, evaluation, and router training.
+Some datasets only provide a test qrels split. In that case, only the available qrels files will appear.
+
+Router experiments may also create:
+
+- `qrels_router_train.jsonl`
+- `qrels_router_test.jsonl`
+- `qrels_router_split_meta.json`
 
 ### `data/<dataset>/processed`
 
@@ -52,92 +46,87 @@ Stores derived artifacts built from the raw dataset.
 
 Typical files:
 
-- `corpus.pkl`: normalized corpus cache
-- `dense.pkl`: dense retriever index / model artifact
-- `sparse.pkl`: sparse retriever index artifact
+- `corpus.pkl`
+- `dense.pkl`
+- `sparse.pkl`
 
-These files can be regenerated from the corresponding `raw/` directory.
+These can always be regenerated from the corresponding `raw/` directory.
+
+### `data/<dataset>/.tmp_beir`
+
+Stores temporary download and extraction artifacts created while preparing BEIR datasets.
+
+This is a staging/cache area rather than the canonical experiment location.
 
 ## Current Contents
 
 ### `data/scifact/`
 
-This is the current dataset-specific directory for the SciFact benchmark.
+SciFact is the small benchmark used as the compact baseline dataset.
 
-- `data/scifact/raw/` contains the SciFact corpus, queries, and qrels.
-- `data/scifact/processed/` contains the built sparse and dense indexes.
+- `data/scifact/raw/` stores corpus, queries, and train/test qrels
+- `data/scifact/processed/` stores the built sparse and dense indexes
 
-### `data/fiqa/`
+### `data/scidocs/`
 
-This is the current dataset-specific directory for the FiQA benchmark.
+SCIDOCS is the larger replacement dataset used for the second-stage comparison.
 
-- `data/fiqa/raw/` contains the FiQA corpus, queries, and qrels.
-- `data/fiqa/processed/` is the intended location for FiQA indexes.
-- `data/fiqa/.tmp_beir/` currently stores temporary download artifacts created during dataset preparation.
+- `data/scidocs/raw/` stores corpus, queries, the official test qrels, and the generated router-only train/test split files
+- `data/scidocs/processed/` stores generated index artifacts
+- `data/scidocs/.tmp_beir/` stores the BEIR download cache for this dataset
 
-## Legacy Compatibility Paths
+## Dataset Notes
 
-The following directories still exist for backward compatibility with older commands:
+### SciFact
 
-- `data/raw/`
-- `data/processed/`
-
-They currently contain copies of the SciFact files and indexes. New experiments should prefer the dataset-specific layout under `data/<dataset>/...`.
-
-## Temporary Download Cache
-
-### `data/.tmp_beir/`
-
-This directory contains temporary files created while downloading or unpacking BEIR datasets.
-
-Examples:
-
-- downloaded zip files
-- extracted BEIR dataset contents
-
-This directory is not the canonical storage location for experiments. It is only a staging/cache area.
-
-### `data/fiqa/.tmp_beir/`
-
-This is a dataset-local temporary cache created while downloading and unpacking FiQA.
-
-It is also not a canonical experiment directory and can be removed later if you want to clean up disk usage.
-
-## Adding a New Dataset
-
-To add a new dataset such as FiQA, use a new dataset-specific directory:
+Recommended commands:
 
 ```bash
-python scripts/prepare_data.py --dataset BeIR/fiqa --qrels-dataset BeIR/fiqa-qrels
+python scripts/build_index.py --dataset-dir data/scifact
+python scripts/retrieve.py --dataset-dir data/scifact --mode hybrid --out results/scifact/hybrid.jsonl
+python scripts/train_router.py \
+  --dataset-dir data/scifact \
+  --model-out results/scifact/router.pkl \
+  --report-out results/scifact/router_report.json \
+  --pred-out results/scifact/router_predictions.jsonl
 ```
 
-This will create:
+### SCIDOCS
 
-```text
-data/fiqa/raw/
-```
-
-Then build indexes into:
-
-```text
-data/fiqa/processed/
-```
-
-using:
+Recommended commands:
 
 ```bash
-python scripts/build_index.py --dataset-dir data/fiqa
+python scripts/build_index.py --dataset-dir data/scidocs
+python scripts/retrieve.py --dataset-dir data/scidocs --mode hybrid --out results/scidocs/hybrid.jsonl
+python scripts/train_router.py \
+  --dataset-dir data/scidocs \
+  --model-out results/scidocs/router.pkl \
+  --report-out results/scidocs/router_report.json \
+  --pred-out results/scidocs/router_predictions.jsonl
+```
+
+If SCIDOCS only has `qrels_test.jsonl` in `raw/`, the pipeline generates:
+
+- `data/scidocs/raw/qrels_router_train.jsonl`
+- `data/scidocs/raw/qrels_router_test.jsonl`
+- `data/scidocs/raw/qrels_router_split_meta.json`
+
+## Adding Another Dataset
+
+To add another BEIR dataset, create a new dataset-specific directory with:
+
+```bash
+python scripts/prepare_data.py --dataset BeIR/<name> --qrels-dataset BeIR/<name>-qrels --source beir-zip
+python scripts/build_index.py --dataset-dir data/<name>
 ```
 
 ## Usage Recommendation
 
-For all future experiments, prefer commands that use `--dataset-dir`, for example:
+Prefer commands that use `--dataset-dir` so each experiment stays isolated:
 
 ```bash
 python scripts/build_index.py --dataset-dir data/scifact
-python scripts/retrieve.py --dataset-dir data/scifact --mode hybrid --out results/scifact_hybrid.jsonl
-python scripts/evaluate.py --dataset-dir data/scifact --pred results/scifact_hybrid.jsonl
-python scripts/train_router.py --dataset-dir data/scifact --report-out results/scifact_router_report.json
+python scripts/build_index.py --dataset-dir data/scidocs
 ```
 
 This keeps experiments reproducible and avoids dataset collisions.

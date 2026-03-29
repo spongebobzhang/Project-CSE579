@@ -1,9 +1,0 @@
-{
-  "recall@10": 0.07179739413535711,
-  "mrr@10": 0.081549456202234,
-  "ndcg@10": 0.057286900333910526,
-  "queries_evaluated": 648,
-  "avg_latency_ms": 8.98644036723128,
-  "pred_path": "results/fiqa_dense.jsonl",
-  "qrels_path": "data/fiqa/raw/qrels_test.jsonl"
-}

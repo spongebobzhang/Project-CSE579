@@ -1,9 +1,0 @@
-{
-  "recall@10": 0.4388888888888889,
-  "mrr@10": 0.32572883597883595,
-  "ndcg@10": 0.3469189987548488,
-  "queries_evaluated": 300,
-  "avg_latency_ms": 9.476205943307528,
-  "pred_path": "results/retrieval_dense.jsonl",
-  "qrels_path": "data/raw/qrels_test.jsonl"
-}

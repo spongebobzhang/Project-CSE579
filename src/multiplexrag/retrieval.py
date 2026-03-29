@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from multiplexrag.data import approximate_token_count
+
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 SPACE_RE = re.compile(r"\s+")
@@ -44,16 +46,25 @@ def char_ngrams(text: str, min_n: int = 3, max_n: int = 5) -> list[str]:
     return grams
 
 
-def _topk_from_scores(doc_ids: list[str], scores: np.ndarray, topk: int) -> list[dict]:
+def _topk_from_scores(
+    doc_ids: list[str],
+    scores: np.ndarray,
+    topk: int,
+    doc_token_counts: dict[str, int] | None = None,
+) -> list[dict]:
     if len(doc_ids) == 0:
         return []
     topk = min(topk, len(doc_ids))
     order = np.argpartition(-scores, topk - 1)[:topk]
     order = order[np.argsort(-scores[order])]
-    return [
-        {"doc_id": doc_ids[idx], "score": float(scores[idx]), "rank": rank}
-        for rank, idx in enumerate(order, start=1)
-    ]
+    results = []
+    for rank, idx in enumerate(order, start=1):
+        doc_id = doc_ids[idx]
+        item = {"doc_id": doc_id, "score": float(scores[idx]), "rank": rank}
+        if doc_token_counts is not None:
+            item["token_count"] = int(doc_token_counts.get(str(doc_id), 0))
+        results.append(item)
+    return results
 
 
 class SparseRetriever:
@@ -61,6 +72,7 @@ class SparseRetriever:
 
     def __init__(self) -> None:
         self.doc_ids: list[str] = []
+        self.doc_token_counts: dict[str, int] = {}
         self.bm25 = None
         self.doc_term_freqs: list[Counter] = []
         self.doc_len: np.ndarray | None = None
@@ -71,6 +83,10 @@ class SparseRetriever:
 
     def fit(self, corpus: list[dict]) -> "SparseRetriever":
         self.doc_ids = [doc["doc_id"] for doc in corpus]
+        self.doc_token_counts = {
+            str(doc["doc_id"]): approximate_token_count(doc["content"])
+            for doc in corpus
+        }
         tokenized = [tokenize(doc["content"]) for doc in corpus]
         try:
             from rank_bm25 import BM25Okapi
@@ -96,10 +112,11 @@ class SparseRetriever:
         if self.doc_len is None:
             raise RuntimeError("SparseRetriever is not fitted.")
         t0 = time.perf_counter()
+        doc_token_counts = getattr(self, "doc_token_counts", {})
         query_terms = tokenize(query)
         if self.bm25 is not None:
             scores = np.asarray(self.bm25.get_scores(query_terms), dtype=np.float32)
-            results = _topk_from_scores(self.doc_ids, scores, topk)
+            results = _topk_from_scores(self.doc_ids, scores, topk, doc_token_counts)
             latency_ms = (time.perf_counter() - t0) * 1000.0
             return results, latency_ms
         scores = np.zeros(len(self.doc_ids), dtype=np.float32)
@@ -114,7 +131,7 @@ class SparseRetriever:
                 idf = self.idf.get(term, 0.0)
                 doc_score += idf * (freq * (self.k1 + 1.0)) / (freq + norm)
             scores[idx] = doc_score
-        results = _topk_from_scores(self.doc_ids, scores, topk)
+        results = _topk_from_scores(self.doc_ids, scores, topk, doc_token_counts)
         latency_ms = (time.perf_counter() - t0) * 1000.0
         return results, latency_ms
 
@@ -132,6 +149,7 @@ class DenseRetriever:
         self.dense_dim = dense_dim
         self.batch_size = batch_size
         self.doc_ids: list[str] = []
+        self.doc_token_counts: dict[str, int] = {}
         self.backend = "hashing"
         self.model = None
         self.doc_vectors: np.ndarray | None = None
@@ -201,6 +219,10 @@ class DenseRetriever:
 
     def fit(self, corpus: list[dict]) -> "DenseRetriever":
         self.doc_ids = [doc["doc_id"] for doc in corpus]
+        self.doc_token_counts = {
+            str(doc["doc_id"]): approximate_token_count(doc["content"])
+            for doc in corpus
+        }
         texts = [doc["content"] for doc in corpus]
         if not self._fit_sentence_transformer(texts):
             matrix = np.vstack([self._hashed_vector(text) for text in texts])
@@ -234,6 +256,7 @@ class DenseRetriever:
         if self.doc_vectors is None:
             raise RuntimeError("DenseRetriever is not fitted.")
         t0 = time.perf_counter()
+        doc_token_counts = getattr(self, "doc_token_counts", {})
         qvec = self._encode_query(query)
         if self.backend == "sentence-transformers" and self.faiss_index is not None:
             scores, indices = self.faiss_index.search(qvec[np.newaxis, :].astype(np.float32), topk)
@@ -241,10 +264,18 @@ class DenseRetriever:
             for rank, (idx, score) in enumerate(zip(indices[0], scores[0]), start=1):
                 if idx < 0:
                     continue
-                results.append({"doc_id": self.doc_ids[int(idx)], "score": float(score), "rank": rank})
+                doc_id = self.doc_ids[int(idx)]
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "score": float(score),
+                        "rank": rank,
+                        "token_count": int(doc_token_counts.get(str(doc_id), 0)),
+                    }
+                )
         else:
             scores = self.doc_vectors @ qvec
-            results = _topk_from_scores(self.doc_ids, scores, topk)
+            results = _topk_from_scores(self.doc_ids, scores, topk, doc_token_counts)
         latency_ms = (time.perf_counter() - t0) * 1000.0
         return results, latency_ms
 
@@ -261,12 +292,21 @@ class HybridRetriever:
         sparse_results, sparse_ms = self.sparse.search(query, topk=topk * 3)
         dense_results, dense_ms = self.dense.search(query, topk=topk * 3)
         fused: dict[str, float] = defaultdict(float)
+        token_counts: dict[str, int] = {}
         for results in (sparse_results, dense_results):
             for item in results:
-                fused[item["doc_id"]] += 1.0 / (self.rrf_k + item["rank"])
+                doc_id = str(item["doc_id"])
+                fused[doc_id] += 1.0 / (self.rrf_k + item["rank"])
+                if "token_count" in item:
+                    token_counts[doc_id] = int(item["token_count"])
         ordered = sorted(fused.items(), key=lambda x: x[1], reverse=True)[:topk]
         output = [
-            {"doc_id": doc_id, "score": float(score), "rank": rank}
+            {
+                "doc_id": doc_id,
+                "score": float(score),
+                "rank": rank,
+                "token_count": int(token_counts.get(str(doc_id), 0)),
+            }
             for rank, (doc_id, score) in enumerate(ordered, start=1)
         ]
         return output, sparse_ms + dense_ms

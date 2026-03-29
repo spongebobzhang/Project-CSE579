@@ -2,6 +2,7 @@
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,19 +23,73 @@ def parse_args():
     p.add_argument("--pred-out", default="results/router_predictions.jsonl")
     p.add_argument("--topk", type=int, default=10)
     p.add_argument("--policy", choices=["classifier"], default="classifier")
+    p.add_argument(
+        "--label-metrics",
+        nargs="+",
+        default=[],
+        help="Metrics used to create weak router labels, for example: mrr@10 ndcg@10 recall@10",
+    )
+    p.add_argument(
+        "--label-weights",
+        nargs="+",
+        type=float,
+        default=[],
+        help="Weights aligned with --label-metrics. Defaults to equal weights.",
+    )
+    p.add_argument(
+        "--label-tie-preference",
+        choices=["sparse", "dense", "hybrid"],
+        default="hybrid",
+        help="Which mode wins when the label metrics tie.",
+    )
+    p.add_argument(
+        "--use-retrieval-features",
+        action="store_true",
+        help="Augment query-only router features with retrieval-confidence signals from sparse/dense/hybrid results.",
+    )
+    p.add_argument(
+        "--router-confidence-threshold",
+        type=float,
+        default=0.45,
+        help="Fallback to the configured router mode when predicted confidence is below this threshold.",
+    )
+    p.add_argument(
+        "--router-fallback-mode",
+        choices=["sparse", "dense", "hybrid"],
+        default="dense",
+        help="Fallback strategy used when the router is uncertain.",
+    )
+    p.add_argument(
+        "--usd-per-1k-tokens",
+        type=float,
+        default=0.002,
+        help="Estimated downstream input price in USD per 1K tokens for query + retrieved context.",
+    )
     return p.parse_args()
 
 
-def collect_query_results(queries: list[dict], retrievers: dict, topk: int) -> dict[str, dict]:
+def collect_query_results(
+    queries: list[dict],
+    retrievers: dict,
+    topk: int,
+    usd_per_1k_tokens: float,
+) -> dict[str, dict]:
+    from multiplexrag.data import approximate_token_count
+
     collected: dict[str, dict] = {}
     for query in queries:
         by_mode = {}
+        query_tokens = approximate_token_count(query["text"])
         for mode, retriever in retrievers.items():
             results, latency_ms = retriever.search(query["text"], topk=topk)
+            context_tokens = sum(int(item.get("token_count", 0)) for item in results)
+            total_tokens = query_tokens + context_tokens
             by_mode[mode] = {
                 "results": results,
                 "doc_ids": [item["doc_id"] for item in results],
                 "latency_ms": float(latency_ms),
+                "estimated_total_tokens": float(total_tokens),
+                "estimated_cost_usd": float(total_tokens / 1000.0 * usd_per_1k_tokens),
             }
         collected[query["query_id"]] = by_mode
     return collected
@@ -45,6 +100,9 @@ def label_queries(
     qrels: dict[str, set[str]],
     query_results: dict[str, dict],
     topk: int,
+    label_metrics: list[str] | None = None,
+    label_weights: list[float] | None = None,
+    tie_preference: str = "hybrid",
 ) -> tuple[list[dict], list[str]]:
     from multiplexrag.router import best_mode_for_query
 
@@ -59,7 +117,16 @@ def label_queries(
             for mode, payload in query_results[query["query_id"]].items()
         }
         kept_queries.append(query)
-        labels.append(best_mode_for_query(results_by_mode, relevant, k=topk))
+        labels.append(
+            best_mode_for_query(
+                results_by_mode,
+                relevant,
+                k=topk,
+                metrics=label_metrics,
+                weights=label_weights,
+                tie_preference=tie_preference,
+            )
+        )
     return kept_queries, labels
 
 
@@ -67,6 +134,8 @@ def summarize_metrics(
     metrics: list[str],
     chosen_doc_ids: dict[str, list[str]],
     chosen_latencies: dict[str, float],
+    chosen_tokens: dict[str, float],
+    chosen_costs: dict[str, float],
     qrels: dict[str, set[str]],
 ) -> dict[str, float]:
     from multiplexrag.eval_utils import score_metric
@@ -74,18 +143,30 @@ def summarize_metrics(
     summary = {metric: 0.0 for metric in metrics}
     counted = 0
     latency_total = 0.0
+    token_total = 0.0
+    cost_total = 0.0
     for query_id, relevant in qrels.items():
         doc_ids = chosen_doc_ids.get(query_id, [])
         for metric in metrics:
             summary[metric] += score_metric(metric, doc_ids, relevant)
         latency_total += chosen_latencies.get(query_id, 0.0)
+        token_total += chosen_tokens.get(query_id, 0.0)
+        cost_total += chosen_costs.get(query_id, 0.0)
         counted += 1
     if counted == 0:
-        return {**summary, "queries_evaluated": 0, "avg_latency_ms": 0.0}
+        return {
+            **summary,
+            "queries_evaluated": 0,
+            "avg_latency_ms": 0.0,
+            "avg_estimated_total_tokens": 0.0,
+            "avg_estimated_cost_usd": 0.0,
+        }
     for metric in metrics:
         summary[metric] /= counted
     summary["queries_evaluated"] = counted
     summary["avg_latency_ms"] = latency_total / counted
+    summary["avg_estimated_total_tokens"] = token_total / counted
+    summary["avg_estimated_cost_usd"] = cost_total / counted
     return summary
 
 
@@ -97,42 +178,107 @@ def choose_mode_outputs(
 ) -> dict[str, float]:
     chosen_doc_ids = {}
     chosen_latencies = {}
+    chosen_tokens = {}
+    chosen_costs = {}
     for query_id in qrels:
         mode = selection[query_id]
         chosen_doc_ids[query_id] = query_results[query_id][mode]["doc_ids"]
         chosen_latencies[query_id] = query_results[query_id][mode]["latency_ms"]
-    return summarize_metrics(metrics, chosen_doc_ids, chosen_latencies, qrels)
+        chosen_tokens[query_id] = query_results[query_id][mode]["estimated_total_tokens"]
+        chosen_costs[query_id] = query_results[query_id][mode]["estimated_cost_usd"]
+    return summarize_metrics(
+        metrics,
+        chosen_doc_ids,
+        chosen_latencies,
+        chosen_tokens,
+        chosen_costs,
+        qrels,
+    )
 
 
 def main():
     args = parse_args()
     from multiplexrag.data import load_corpus, load_queries, load_qrels
-    from multiplexrag.retrieval import DenseRetriever, HybridRetriever, SparseRetriever
+    from multiplexrag.retrieval import DenseRetriever, HybridRetriever, SparseRetriever, load_pickle
     from multiplexrag.router import QueryRouter, best_mode_for_query
 
     dataset_dir = Path(args.dataset_dir) if args.dataset_dir else None
-    corpus_path = dataset_dir / "raw" / "corpus.jsonl" if dataset_dir else Path(args.corpus)
-    queries_path = dataset_dir / "raw" / "queries.jsonl" if dataset_dir else Path(args.queries)
-    train_qrels_path = dataset_dir / "raw" / "qrels_train.jsonl" if dataset_dir else Path(args.train_qrels)
-    test_qrels_path = dataset_dir / "raw" / "qrels_test.jsonl" if dataset_dir else Path(args.test_qrels)
+    corpus_path = (
+        dataset_dir / "raw" / "corpus.jsonl"
+        if dataset_dir and args.corpus == "data/raw/corpus.jsonl"
+        else Path(args.corpus)
+    )
+    queries_path = (
+        dataset_dir / "raw" / "queries.jsonl"
+        if dataset_dir and args.queries == "data/raw/queries.jsonl"
+        else Path(args.queries)
+    )
+    train_qrels_path = (
+        dataset_dir / "raw" / "qrels_train.jsonl"
+        if dataset_dir and args.train_qrels == "data/raw/qrels_train.jsonl"
+        else Path(args.train_qrels)
+    )
+    test_qrels_path = (
+        dataset_dir / "raw" / "qrels_test.jsonl"
+        if dataset_dir and args.test_qrels == "data/raw/qrels_test.jsonl"
+        else Path(args.test_qrels)
+    )
 
     corpus = load_corpus(corpus_path)
     queries = load_queries(queries_path)
     train_qrels = load_qrels(train_qrels_path)
     test_qrels = load_qrels(test_qrels_path)
     metrics = [f"recall@{args.topk}", f"mrr@{args.topk}", f"ndcg@{args.topk}"]
+    label_metrics = args.label_metrics or [f"mrr@{args.topk}"]
+    label_weights = args.label_weights or [1.0] * len(label_metrics)
+    if len(label_metrics) != len(label_weights):
+        raise ValueError("--label-metrics and --label-weights must have the same length")
 
-    sparse = SparseRetriever().fit(corpus)
-    dense = DenseRetriever().fit(corpus)
+    processed_dir = dataset_dir / "processed" if dataset_dir else None
+    sparse_index_path = processed_dir / "sparse.pkl" if processed_dir else None
+    dense_index_path = processed_dir / "dense.pkl" if processed_dir else None
+
+    if sparse_index_path and sparse_index_path.exists():
+        sparse = load_pickle(sparse_index_path)
+    else:
+        sparse = SparseRetriever().fit(corpus)
+
+    if dense_index_path and dense_index_path.exists():
+        dense = load_pickle(dense_index_path)
+    else:
+        dense = DenseRetriever().fit(corpus)
+
     hybrid = HybridRetriever(sparse, dense)
     retrievers = {"sparse": sparse, "dense": dense, "hybrid": hybrid}
 
-    query_results = collect_query_results(queries, retrievers, args.topk)
-    train_queries, train_labels = label_queries(queries, train_qrels, query_results, args.topk)
-    test_queries, test_labels = label_queries(queries, test_qrels, query_results, args.topk)
+    query_results = collect_query_results(queries, retrievers, args.topk, args.usd_per_1k_tokens)
+    train_queries, train_labels = label_queries(
+        queries,
+        train_qrels,
+        query_results,
+        args.topk,
+        label_metrics=label_metrics,
+        label_weights=label_weights,
+        tie_preference=args.label_tie_preference,
+    )
+    test_queries, test_labels = label_queries(
+        queries,
+        test_qrels,
+        query_results,
+        args.topk,
+        label_metrics=label_metrics,
+        label_weights=label_weights,
+        tie_preference=args.label_tie_preference,
+    )
+    train_query_results = {query["query_id"]: query_results[query["query_id"]] for query in train_queries}
+    test_query_results = {query["query_id"]: query_results[query["query_id"]] for query in test_queries}
 
-    router = QueryRouter().fit(train_queries, train_labels)
-    preds = router.predict(test_queries)
+    router = QueryRouter(
+        min_confidence=args.router_confidence_threshold,
+        fallback_mode=args.router_fallback_mode,
+        use_retrieval_features=args.use_retrieval_features,
+    ).fit(train_queries, train_labels, train_query_results)
+    preds = router.predict(test_queries, test_query_results)
     labels = sorted(set(train_labels) | set(test_labels))
     test_query_ids = [query["query_id"] for query in test_queries]
     gold_selection = {
@@ -173,6 +319,8 @@ def main():
                 "oracle_mode": oracle_selection[query_id],
                 "gold_mode": gold_selection[query_id],
                 "latency_ms": chosen["latency_ms"],
+                "estimated_total_tokens": chosen["estimated_total_tokens"],
+                "estimated_cost_usd": chosen["estimated_cost_usd"],
                 "results": chosen["results"],
             }
         )
@@ -184,7 +332,20 @@ def main():
             else 0.0
         ),
         "labels": labels,
+        "router_settings": {
+            "policy": args.policy,
+            "confidence_threshold": args.router_confidence_threshold,
+            "fallback_mode": args.router_fallback_mode,
+            "use_retrieval_features": args.use_retrieval_features,
+            "label_metrics": label_metrics,
+            "label_weights": label_weights,
+            "label_tie_preference": args.label_tie_preference,
+        },
+        "train_size": len(train_labels),
         "test_size": len(test_labels),
+        "train_label_distribution": dict(sorted(Counter(train_labels).items())),
+        "test_label_distribution": dict(sorted(Counter(test_labels).items())),
+        "predicted_label_distribution": dict(sorted(Counter(preds).items())),
         "metrics": metrics,
         "baselines": baseline_metrics,
         "router": router_metrics,
@@ -213,7 +374,11 @@ def main():
         metric_str = ", ".join(
             f"{metric}={payload[metric]:.4f}" for metric in metrics
         )
-        print(f"  {name:>6}: {metric_str}, latency={payload['avg_latency_ms']:.2f} ms")
+        print(
+            f"  {name:>6}: {metric_str}, latency={payload['avg_latency_ms']:.2f} ms, "
+            f"tokens={payload['avg_estimated_total_tokens']:.2f}, "
+            f"cost=${payload['avg_estimated_cost_usd']:.6f}"
+        )
     print(json.dumps(report, indent=2))
     print(f"Saved model  -> {args.model_out}")
     print(f"Saved report -> {args.report_out}")
