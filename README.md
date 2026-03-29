@@ -5,7 +5,6 @@ This project follows the proposal goal: compare Dense/Sparse/Hybrid retrieval an
 ## 1) Environment
 
 ```bash
-cd /home/fangzz/LLM/multiplexrag
 source ../.venv/bin/activate
 pip install -r requirements.txt
 ```
