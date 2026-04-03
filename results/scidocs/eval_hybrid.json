@@ -3,7 +3,7 @@
   "mrr@10": 0.3343496031746031,
   "ndcg@10": 0.19847965982431753,
   "queries_evaluated": 1000,
-  "avg_latency_ms": 80.20139705017209,
+  "avg_latency_ms": 406.0792808420956,
   "avg_estimated_total_tokens": 1756.995,
   "avg_estimated_cost_usd": 0.0035139900000000046,
   "pred_path": "/home/zzhan621/CSE579/Project-CSE579/results/scidocs/hybrid.jsonl",

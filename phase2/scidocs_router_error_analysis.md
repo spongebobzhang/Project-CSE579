@@ -1,8 +1,21 @@
 # SCIDOCS Router Error Analysis
 
+## Scope Note
+
+This analysis refers to the archived default SCIDOCS router snapshot:
+
+- weak-label rule: `MRR@10`, tie -> `hybrid`
+- retrieval-confidence features: off
+
+That historical snapshot is useful because it explains why the original SCIDOCS router underperformed fixed `dense`.
+
+It is not the current best SCIDOCS router configuration anymore.
+
+The later margin-aware plus retrieval-confidence variant is documented separately in [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md) and now slightly beats fixed `dense` on the SCIDOCS self-split setting.
+
 ## Question
 
-Why does the current router still lose to the fixed `dense` baseline on SCIDOCS?
+Why did the archived default router lose to the fixed `dense` baseline on SCIDOCS?
 
 Current Phase 1 snapshot on the SCIDOCS self-split test set:
 

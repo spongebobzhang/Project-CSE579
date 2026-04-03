@@ -196,9 +196,60 @@ The pipeline also tracks:
 
 These are approximate efficiency signals for comparison across routing choices.
 
+## Why Baselines Are Needed During Training
+
+An important clarification is that the router does not require all baselines to be run at inference time.
+
+There are two different stages in the project:
+
+### Training and analysis stage
+
+During training, the project runs `sparse`, `dense`, and `hybrid` for the same queries because the router needs supervision.
+
+That supervision answers the question:
+
+`for this query, which retrieval branch worked best?`
+
+So baseline retrieval is used offline to:
+
+- construct weak labels
+- compare fixed strategies
+- estimate the oracle upper bound
+- diagnose where the router fails
+
+This is why baseline evaluation is necessary during development.
+
+### Inference stage
+
+At inference time, the intended workflow is different:
+
+1. receive a new query
+2. let the router predict the best branch
+3. run only that selected branch
+
+So the deployment-time value of the router is precisely that it avoids running all retrieval branches for every query.
+
+## Relation To The Project Goal
+
+The proposal goal is not to say that every incoming query must first run all baselines before routing.
+
+Instead, the goal is:
+
+- use offline baseline comparisons to learn a routing policy
+- then use that learned policy online to choose a branch directly
+
+This distinction matters because the project is trying to optimize both:
+
+- retrieval quality
+- efficiency such as latency and cost
+
+If all branches had to be run at inference time, the router would provide little practical efficiency benefit.
+
+So the current training pipeline uses baseline runs as an offline teacher, while the intended final system uses the learned router as an online selector.
+
 ## How To Run
 
-The default router training call uses `MRR@10` as the weak-label metric:
+The baseline/default router training call uses `MRR@10` as the weak-label metric:
 
 ```bash
 python scripts/train_router.py \
@@ -226,9 +277,26 @@ Useful router-training options:
 - `--label-metrics`: metrics used to create weak labels
 - `--label-weights`: weights for the corresponding label metrics
 - `--label-tie-preference`: which branch wins if combined label scores tie
+- `--label-near-tie-mode`: optional preferred branch when it is within the configured label margin
+- `--label-near-tie-margin`: margin used by `--label-near-tie-mode`
 - `--use-retrieval-features`: add retrieval-confidence features to the router input representation
 - `--router-confidence-threshold`: fallback threshold at inference time
 - `--router-fallback-mode`: default branch used when the router is uncertain
+
+The current best SCIDOCS-specific router configuration is:
+
+```bash
+python scripts/train_router.py \
+  --dataset-dir data/scidocs \
+  --model-out results/scidocs/router.pkl \
+  --report-out results/scidocs/router_report.json \
+  --pred-out results/scidocs/router_predictions.jsonl \
+  --label-near-tie-mode dense \
+  --label-near-tie-margin 0.0 \
+  --use-retrieval-features
+```
+
+That command is SCIDOCS-specific. SciFact currently performs best with the default Phase 2 router rather than the SCIDOCS-specific label and feature settings.
 
 The same router options can now also be passed through the one-command pipeline. For example:
 
@@ -240,39 +308,84 @@ python scripts/run_pipeline.py \
   --label-tie-preference dense
 ```
 
+The one-command pipeline also supports dataset-aware presets through `--router-preset`.
+
+Current preset behavior:
+
+- `auto`: choose the current best-known router configuration for the dataset
+- `scifact-best`: use the default Phase 2 SciFact router
+- `scidocs-best`: use margin-aware dense-favoring labels plus retrieval-confidence features
+- `manual`: disable presets and use only the flags passed on the command line
+
+So the intended one-command usage is now:
+
+```bash
+python scripts/run_pipeline.py --dataset-dir data/scifact --router-preset auto
+python scripts/run_pipeline.py --dataset-dir data/scidocs --router-preset auto
+```
+
+Under `auto`, the script currently applies:
+
+- SciFact: default weak-label rule `MRR@10`, tie preference `hybrid`, query-only router
+- SCIDOCS: dense-favoring near-tie weak labels plus retrieval-confidence features
+
 ## Current Results Summary
 
-This document tracks two different result snapshots:
+This document now distinguishes between:
 
-- archived default-router snapshot in `phase1/<dataset>/router_report.json`
-- newer experimental runs in `results/<dataset>/router_report.json`
+- archived default-router snapshots in `phase1/<dataset>/router_report.json`
+- current best runnable results in `results/<dataset>/router_report.json`
 
-The default Phase 2 numbers below refer to the archived default-router snapshot with weak-label rule `MRR@10` and tie preference `hybrid`, not the later multi-metric experiment outputs in `results/`.
+The current best one-command pipeline behavior uses dataset-aware presets:
 
-### SciFact
+- SciFact: default Phase 2 router
+- SCIDOCS: margin-aware dense-favoring weak labels plus retrieval-confidence features
+
+### Current Best Results
+
+These are the latest result files produced by the dataset-aware one-command pipeline.
+
+#### SciFact
 
 - Router accuracy: `0.7333`
 - Router `MRR@10`: `0.6608`
+- Router `nDCG@10`: `0.6945`
 - Best fixed baseline `MRR@10`: `0.6563` from `hybrid`
 - Oracle `MRR@10`: `0.7337`
 
 Interpretation:
 
-- the upgraded router now slightly beats the best fixed baseline on SciFact
+- the current SciFact router slightly beats the best fixed baseline
+- this remains the default query-only Phase 2 router
 - there is still a clear oracle gap, so routing can improve further
 
-### SCIDOCS
+#### SCIDOCS
 
-- Router accuracy: `0.5000`
-- Router `MRR@10`: `0.3620`
+- Router accuracy: `0.6300`
+- Router `MRR@10`: `0.3740`
+- Router `nDCG@10`: `0.2284`
 - Best fixed baseline `MRR@10`: `0.3723` from `dense`
 - Oracle `MRR@10`: `0.4636`
 
 Interpretation:
 
-- the upgraded router improves over the earlier centroid version
-- it still does not beat always-`dense` on SCIDOCS
-- the remaining gap suggests the router still needs stronger signals
+- the current SCIDOCS router now slightly beats the best fixed baseline on `MRR@10`
+- this improvement comes from dataset-specific supervision cleanup plus retrieval-confidence features
+- there is still a sizable oracle gap, so SCIDOCS routing is improved but not solved
+
+### Archived Default Snapshot
+
+For reference, the archived default SCIDOCS Phase 2 router in `phase1/scidocs/router_report.json` used:
+
+- weak-label rule: `MRR@10`, tie -> `hybrid`
+- query-only features
+
+and achieved:
+
+- accuracy: `0.5000`
+- `MRR@10`: `0.3620`
+
+That older snapshot is still useful for ablation and error analysis, but it is no longer the best SCIDOCS Phase 2 configuration.
 
 ## Comparison With Multi-Metric Weak Labels
 
@@ -351,21 +464,69 @@ However, in the current experiments:
 - it only produced a marginal `MRR@10` gain on SCIDOCS
 - it therefore remains an important ablation and alternative labeling strategy, rather than the new default router configuration
 
+## SCIDOCS Margin-Aware Labeling + Retrieval Features
+
+After the SCIDOCS error analysis, a more targeted ablation was run:
+
+- make weak labels prefer `dense` on ties / near-ties
+- add retrieval-confidence features to the router input
+
+The detailed write-up is in [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md).
+
+High-level outcome:
+
+- default SCIDOCS router: `MRR@10 = 0.3620`
+- margin-aware labels only: `0.3712`
+- retrieval-confidence features only: `0.3576`
+- margin-aware labels + retrieval-confidence features: `0.3740`
+- fixed `dense` baseline: `0.3723`
+
+Detailed comparison on the same SCIDOCS self-split test set:
+
+| Configuration | Accuracy | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Default router | 0.5000 | 0.2480 | 0.3620 | 0.2277 | 135.15 |
+| Margin-aware labels only | 0.6500 | 0.2438 | 0.3712 | 0.2274 | 40.94 |
+| Retrieval-confidence features only | 0.5050 | 0.2455 | 0.3576 | 0.2235 | 146.77 |
+| Margin-aware labels + retrieval-confidence features | 0.6300 | 0.2490 | 0.3740 | 0.2284 | 65.64 |
+| Fixed dense baseline | - | 0.2510 | 0.3723 | 0.2307 | 14.15 |
+
+Interpretation:
+
+- fixing the weak-label bias was the first important step
+- retrieval-confidence features were only helpful after that supervision issue was reduced
+- the combined variant slightly beats fixed `dense` on the SCIDOCS self-split setting
+
+This is an important result for the project narrative because it shows that the SCIDOCS router problem was not simply “the classifier is too weak.”
+
+Instead, the evidence suggests a two-stage explanation:
+
+1. the original SCIDOCS supervision was biased because many `dense` and `hybrid` queries tied under `MRR@10`
+2. once that label bias was reduced, retrieval-side confidence signals became useful and helped the router cross the fixed-`dense` baseline
+
+So the current best SCIDOCS result in Phase 2 is not the multi-metric weak-label variant. It is the targeted combination of:
+
+- margin-aware dense-favoring weak labels
+- retrieval-confidence features
+
+That makes this the strongest candidate for the next default SCIDOCS router setting.
+
 ## Main Strengths
 
 - much stronger than the original centroid baseline
 - still lightweight and reproducible
-- uses only query-side information
 - supports uncertainty-aware routing
-- already strong enough to beat the best fixed strategy on SciFact
+- can use a pure query-only configuration when that is sufficient, as on SciFact
+- can also benefit from dataset-specific retrieval-confidence features when needed, as on SCIDOCS
+- current dataset-aware presets beat the best fixed strategy on both SciFact and SCIDOCS
 
 ## Current Limitations
 
-- it still relies only on query-side signals
-- it does not yet use retrieval-confidence features such as top-score gaps or rank-list overlap
-- the fallback policy is global rather than learned per dataset
+- the strongest SCIDOCS result currently depends on dataset-specific configuration rather than one universal router setting
+- fallback behavior is still manually configured rather than learned per dataset
 - SCIDOCS evaluation still depends on a self-split rather than an official train/test split
 - the router remains below the oracle upper bound on both datasets
+- retrieval-confidence features help on SCIDOCS, but they did not help on their own and still need more systematic tuning
 
 ## Next Phase-2 Improvements
 

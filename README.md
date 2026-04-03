@@ -53,20 +53,30 @@ python scripts/train_router.py \
 Run the whole pipeline for one prepared dataset:
 
 ```bash
-python scripts/run_pipeline.py --dataset-dir data/scifact
-python scripts/run_pipeline.py --dataset-dir data/scidocs
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scifact
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scidocs
 ```
+
+By default, the pipeline now uses `--router-preset auto`, which selects the current best-known router configuration for each dataset:
+
+- `scifact`: default Phase 2 router
+- `scidocs`: margin-aware dense-favoring labels + retrieval-confidence features
+
+Current best one-command results:
+
+- `scifact`: router `MRR@10 = 0.6608`, slightly above fixed `hybrid = 0.6563`
+- `scidocs`: router `MRR@10 = 0.3740`, slightly above fixed `dense = 0.3723`
 
 If you only want baselines and evaluation first:
 
 ```bash
-python scripts/run_pipeline.py --dataset-dir data/scidocs --skip-router
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scidocs --skip-router
 ```
 
 If you want the script to prepare a BEIR dataset before running:
 
 ```bash
-python scripts/run_pipeline.py \
+./.venv/bin/python scripts/run_pipeline.py \
   --dataset-dir data/scifact \
   --prepare-dataset BeIR/scifact \
   --qrels-dataset BeIR/scifact-qrels
@@ -89,7 +99,7 @@ The split protocol is:
 You can control the split with:
 
 ```bash
-python scripts/run_pipeline.py --dataset-dir data/scidocs --router-train-ratio 0.8 --router-split-seed 42
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scidocs --router-train-ratio 0.8 --router-split-seed 42
 ```
 
 ## 6) Router labeling options
@@ -122,19 +132,41 @@ Useful label-related arguments:
 - `--label-metrics`: metrics used to create weak labels
 - `--label-weights`: weights aligned with `--label-metrics`
 - `--label-tie-preference`: which branch wins when combined scores tie
+- `--label-near-tie-mode`: optional preferred branch when it is within the configured margin of the best weak label
+- `--label-near-tie-margin`: margin used by `--label-near-tie-mode`
 - `--use-retrieval-features`: add retrieval-confidence features to the router feature vector
 
 The same options now work through the one-command pipeline. For example:
 
 ```bash
-python scripts/run_pipeline.py \
+./.venv/bin/python scripts/run_pipeline.py \
   --dataset-dir data/scidocs \
   --label-metrics mrr@10 ndcg@10 recall@10 \
   --label-weights 0.5 0.3 0.2 \
   --label-tie-preference dense
 ```
 
-## 7) Notes
+If you want explicit dataset-aware presets instead of manually passing label arguments:
+
+```bash
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scifact --router-preset auto
+./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scidocs --router-preset auto
+```
+
+You can also force a preset manually:
+
+- `--router-preset scifact-best`
+- `--router-preset scidocs-best`
+- `--router-preset manual`
+
+## 7) Best Presets By Dataset
+
+- `scifact`: `scifact-best` or `auto`
+- `scidocs`: `scidocs-best` or `auto`
+
+In practice, `auto` is the recommended option because it already maps each supported dataset to its current best-known router configuration.
+
+## 8) Notes
 
 - The loaders normalize BEIR-style `_id` fields into `doc_id` / `query_id`.
 - If `sentence-transformers` is unavailable, dense retrieval falls back to an offline hashing-based encoder so experiments still run.

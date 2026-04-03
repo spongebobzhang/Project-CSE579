@@ -43,6 +43,18 @@ def parse_args():
         help="Which mode wins when the label metrics tie.",
     )
     p.add_argument(
+        "--label-near-tie-mode",
+        choices=["sparse", "dense", "hybrid"],
+        default="",
+        help="Optional preferred mode when its weak-label score is within the configured margin of the best mode.",
+    )
+    p.add_argument(
+        "--label-near-tie-margin",
+        type=float,
+        default=0.0,
+        help="If best_score - preferred_mode_score <= margin, assign the preferred mode label instead.",
+    )
+    p.add_argument(
         "--use-retrieval-features",
         action="store_true",
         help="Augment query-only router features with retrieval-confidence signals from sparse/dense/hybrid results.",
@@ -103,6 +115,8 @@ def label_queries(
     label_metrics: list[str] | None = None,
     label_weights: list[float] | None = None,
     tie_preference: str = "hybrid",
+    near_tie_mode: str = "",
+    near_tie_margin: float = 0.0,
 ) -> tuple[list[dict], list[str]]:
     from multiplexrag.router import best_mode_for_query
 
@@ -125,6 +139,8 @@ def label_queries(
                 metrics=label_metrics,
                 weights=label_weights,
                 tie_preference=tie_preference,
+                near_tie_mode=near_tie_mode or None,
+                near_tie_margin=near_tie_margin,
             )
         )
     return kept_queries, labels
@@ -260,6 +276,8 @@ def main():
         label_metrics=label_metrics,
         label_weights=label_weights,
         tie_preference=args.label_tie_preference,
+        near_tie_mode=args.label_near_tie_mode,
+        near_tie_margin=args.label_near_tie_margin,
     )
     test_queries, test_labels = label_queries(
         queries,
@@ -269,6 +287,8 @@ def main():
         label_metrics=label_metrics,
         label_weights=label_weights,
         tie_preference=args.label_tie_preference,
+        near_tie_mode=args.label_near_tie_mode,
+        near_tie_margin=args.label_near_tie_margin,
     )
     train_query_results = {query["query_id"]: query_results[query["query_id"]] for query in train_queries}
     test_query_results = {query["query_id"]: query_results[query["query_id"]] for query in test_queries}
@@ -340,6 +360,8 @@ def main():
             "label_metrics": label_metrics,
             "label_weights": label_weights,
             "label_tie_preference": args.label_tie_preference,
+            "label_near_tie_mode": args.label_near_tie_mode or None,
+            "label_near_tie_margin": args.label_near_tie_margin,
         },
         "train_size": len(train_labels),
         "test_size": len(test_labels),

@@ -3,6 +3,7 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, Dict, List
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,12 @@ def parse_args():
     )
     p.add_argument("--topk", type=int, default=10, help="Top-k for retrieval and evaluation.")
     p.add_argument(
+        "--router-preset",
+        choices=["auto", "manual", "scifact-best", "scidocs-best"],
+        default="auto",
+        help="Router preset to use. 'auto' selects the current best-known config for each dataset.",
+    )
+    p.add_argument(
         "--label-metrics",
         nargs="+",
         default=[],
@@ -46,6 +53,18 @@ def parse_args():
         choices=["sparse", "dense", "hybrid"],
         default="hybrid",
         help="Which router label wins when weak-label scores tie.",
+    )
+    p.add_argument(
+        "--label-near-tie-mode",
+        choices=["sparse", "dense", "hybrid"],
+        default="",
+        help="Optional preferred label when it is within the configured score margin of the best weak label.",
+    )
+    p.add_argument(
+        "--label-near-tie-margin",
+        type=float,
+        default=0.0,
+        help="If best_score - preferred_mode_score <= margin, the preferred weak label is used.",
     )
     p.add_argument(
         "--use-retrieval-features",
@@ -90,20 +109,89 @@ def parse_args():
     return p.parse_args()
 
 
-def run_step(cmd: list[str]) -> None:
+def run_step(cmd: List[str]) -> None:
     print("\n[run]", " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True, cwd=ROOT)
+
+
+def resolve_router_settings(args, dataset_name: str) -> Dict[str, Any]:
+    settings = {
+        "label_metrics": list(args.label_metrics),
+        "label_weights": list(args.label_weights),
+        "label_tie_preference": args.label_tie_preference,
+        "label_near_tie_mode": args.label_near_tie_mode,
+        "label_near_tie_margin": float(args.label_near_tie_margin),
+        "use_retrieval_features": bool(args.use_retrieval_features),
+        "router_confidence_threshold": float(args.router_confidence_threshold),
+        "router_fallback_mode": args.router_fallback_mode,
+    }
+
+    preset = args.router_preset
+    if preset == "auto":
+        preset = {
+            "scifact": "scifact-best",
+            "scidocs": "scidocs-best",
+        }.get(dataset_name, "manual")
+
+    if preset == "scidocs-best":
+        settings.update(
+            {
+                "label_metrics": [],
+                "label_weights": [],
+                "label_tie_preference": "hybrid",
+                "label_near_tie_mode": "dense",
+                "label_near_tie_margin": 0.0,
+                "use_retrieval_features": True,
+                "router_confidence_threshold": 0.45,
+                "router_fallback_mode": "dense",
+            }
+        )
+    elif preset == "scifact-best":
+        settings.update(
+            {
+                "label_metrics": [],
+                "label_weights": [],
+                "label_tie_preference": "hybrid",
+                "label_near_tie_mode": "",
+                "label_near_tie_margin": 0.0,
+                "use_retrieval_features": False,
+                "router_confidence_threshold": 0.45,
+                "router_fallback_mode": "dense",
+            }
+        )
+
+    if args.router_preset != "manual":
+        if args.label_metrics:
+            settings["label_metrics"] = list(args.label_metrics)
+        if args.label_weights:
+            settings["label_weights"] = list(args.label_weights)
+        if args.label_near_tie_mode:
+            settings["label_near_tie_mode"] = args.label_near_tie_mode
+        if args.label_near_tie_margin > 0.0:
+            settings["label_near_tie_margin"] = float(args.label_near_tie_margin)
+        if args.use_retrieval_features:
+            settings["use_retrieval_features"] = True
+        if args.label_tie_preference != "hybrid":
+            settings["label_tie_preference"] = args.label_tie_preference
+        if args.router_confidence_threshold != 0.45:
+            settings["router_confidence_threshold"] = float(args.router_confidence_threshold)
+        if args.router_fallback_mode != "dense":
+            settings["router_fallback_mode"] = args.router_fallback_mode
+
+    return settings
 
 
 def main():
     args = parse_args()
     dataset_dir = Path(args.dataset_dir)
     dataset_name = dataset_dir.name
+    router_settings = resolve_router_settings(args, dataset_name)
     raw_dir = ROOT / dataset_dir / "raw"
     results_dir = ROOT / "results" / dataset_name
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    python = sys.executable
+    venv_python = ROOT / ".venv" / "bin" / "python"
+    python = str(venv_python) if venv_python.exists() else sys.executable
 
     if args.prepare_dataset:
         cmd = [
@@ -194,9 +282,9 @@ def main():
             "--usd-per-1k-tokens",
             str(args.usd_per_1k_tokens),
             "--router-confidence-threshold",
-            str(args.router_confidence_threshold),
+            str(router_settings["router_confidence_threshold"]),
             "--router-fallback-mode",
-            str(args.router_fallback_mode),
+            str(router_settings["router_fallback_mode"]),
             "--model-out",
             str(results_dir / "router.pkl"),
             "--report-out",
@@ -204,13 +292,19 @@ def main():
             "--pred-out",
             str(results_dir / "router_predictions.jsonl"),
         ]
-        if args.label_metrics:
-            router_cmd.extend(["--label-metrics", *args.label_metrics])
-        if args.label_weights:
-            router_cmd.extend(["--label-weights", *(str(weight) for weight in args.label_weights)])
-        if args.label_tie_preference:
-            router_cmd.extend(["--label-tie-preference", args.label_tie_preference])
-        if args.use_retrieval_features:
+        if router_settings["label_metrics"]:
+            router_cmd.extend(["--label-metrics", *router_settings["label_metrics"]])
+        if router_settings["label_weights"]:
+            router_cmd.extend(
+                ["--label-weights", *(str(weight) for weight in router_settings["label_weights"])]
+            )
+        if router_settings["label_tie_preference"]:
+            router_cmd.extend(["--label-tie-preference", str(router_settings["label_tie_preference"])])
+        if router_settings["label_near_tie_mode"]:
+            router_cmd.extend(["--label-near-tie-mode", str(router_settings["label_near_tie_mode"])])
+        if float(router_settings["label_near_tie_margin"]) > 0.0 or router_settings["label_near_tie_mode"]:
+            router_cmd.extend(["--label-near-tie-margin", str(router_settings["label_near_tie_margin"])])
+        if router_settings["use_retrieval_features"]:
             router_cmd.append("--use-retrieval-features")
         run_step(router_cmd)
 
@@ -218,6 +312,9 @@ def main():
     print(f"Dataset  : {dataset_dir}", flush=True)
     print(f"Results  : {results_dir}", flush=True)
     print(f"Top-k    : {args.topk}", flush=True)
+    if not args.skip_router:
+        print(f"Preset   : {args.router_preset}", flush=True)
+        print(f"Router cfg: {router_settings}", flush=True)
     print(f"Router   : {'skipped' if args.skip_router else 'completed'}", flush=True)
 
 

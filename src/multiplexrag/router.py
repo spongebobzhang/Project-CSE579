@@ -217,6 +217,8 @@ def best_mode_for_query(
     metrics: list[str] | None = None,
     weights: list[float] | None = None,
     tie_preference: str = "hybrid",
+    near_tie_mode: str | None = None,
+    near_tie_margin: float = 0.0,
 ) -> str:
     scored = mode_scores_for_query(
         results_by_mode,
@@ -225,10 +227,15 @@ def best_mode_for_query(
         weights=weights,
         k=k,
     )
-    return max(
+    best_mode, best_payload = max(
         scored.items(),
         key=lambda item: (item[1]["combined"], item[0] == tie_preference),
-    )[0]
+    )
+    if near_tie_mode and near_tie_mode in scored:
+        preferred_score = scored[near_tie_mode]["combined"]
+        if (best_payload["combined"] - preferred_score) <= float(near_tie_margin):
+            return near_tie_mode
+    return best_mode
 
 
 class QueryRouter:
