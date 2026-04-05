@@ -18,6 +18,8 @@ NON_ALNUM_RE = re.compile(r"[^\w\s]")
 UPPER_RE = re.compile(r"[A-Z]")
 WH_PREFIX_RE = re.compile(r"^\s*(what|which|who|when|where|why|how)\b", re.IGNORECASE)
 COMPARATIVE_RE = re.compile(r"\b(vs|versus|compare|difference|better|best)\b", re.IGNORECASE)
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+RETRIEVAL_FEATURE_GROUPS = ("basic", "score_shape", "agreement_rich", "query_match")
 
 STOPWORDS = {
     "a",
@@ -115,39 +117,153 @@ def _score_series(payload: dict, n: int) -> list[float]:
     return scores
 
 
-def retrieval_confidence_features(results_by_mode: dict[str, dict] | None) -> dict[str, float]:
+def _doc_id_series(payload: dict, n: int) -> list[str]:
+    results = payload.get("results", []) if payload else []
+    doc_ids = [str(item["doc_id"]) for item in results[:n]]
+    if len(doc_ids) < n:
+        doc_ids.extend([""] * (n - len(doc_ids)))
+    return doc_ids
+
+
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    return float(numerator / denominator) if abs(denominator) > 1e-6 else 0.0
+
+
+def _rank_of_doc(doc_ids: list[str], target_doc: str) -> float:
+    if not target_doc:
+        return 0.0
+    try:
+        return float(doc_ids.index(target_doc) + 1)
+    except ValueError:
+        return 0.0
+
+
+def _token_set(text: str, max_tokens: int | None = None) -> set[str]:
+    tokens = TOKEN_RE.findall((text or "").lower())
+    if max_tokens is not None:
+        tokens = tokens[:max_tokens]
+    return set(tokens)
+
+
+def _query_doc_match_feature_block(query_text: str, doc_text: str, prefix: str) -> dict[str, float]:
+    query_tokens = _token_set(query_text)
+    doc_tokens = _token_set(doc_text, max_tokens=64)
+    overlap = query_tokens & doc_tokens
+    long_query_tokens = {token for token in query_tokens if len(token) >= 5}
+    long_overlap = long_query_tokens & doc_tokens
+    return {
+        f"{prefix}_overlap_count": float(len(overlap)),
+        f"{prefix}_query_overlap_ratio": _safe_ratio(float(len(overlap)), float(len(query_tokens))),
+        f"{prefix}_doc_overlap_ratio": _safe_ratio(float(len(overlap)), float(len(doc_tokens))),
+        f"{prefix}_long_query_overlap_ratio": _safe_ratio(float(len(long_overlap)), float(len(long_query_tokens))),
+    }
+
+
+def retrieval_confidence_features(
+    query_text: str,
+    results_by_mode: dict[str, dict] | None,
+    groups: tuple[str, ...] | None = None,
+) -> dict[str, float]:
+    modes = ("sparse", "dense", "hybrid")
+    pairs = (("sparse", "dense"), ("sparse", "hybrid"), ("dense", "hybrid"))
+    enabled = tuple(groups or RETRIEVAL_FEATURE_GROUPS)
     if not results_by_mode:
         empty = {}
-        for mode in ("sparse", "dense", "hybrid"):
-            empty[f"{mode}_top1_score"] = 0.0
-            empty[f"{mode}_top1_gap"] = 0.0
-            empty[f"{mode}_top1_gap_ratio"] = 0.0
-            empty[f"{mode}_top3_mean_score"] = 0.0
-            empty[f"{mode}_top3_std_score"] = 0.0
-        for left, right in (("sparse", "dense"), ("sparse", "hybrid"), ("dense", "hybrid")):
-            empty[f"{left}_{right}_jaccard"] = 0.0
-            empty[f"{left}_{right}_top1_same_doc"] = 0.0
+        for mode in modes:
+            if "basic" in enabled:
+                empty[f"{mode}_top1_score"] = 0.0
+                empty[f"{mode}_top1_gap"] = 0.0
+                empty[f"{mode}_top1_gap_ratio"] = 0.0
+                empty[f"{mode}_top3_mean_score"] = 0.0
+                empty[f"{mode}_top3_std_score"] = 0.0
+            if "score_shape" in enabled:
+                empty[f"{mode}_top5_mean_score"] = 0.0
+                empty[f"{mode}_top5_std_score"] = 0.0
+                empty[f"{mode}_top10_mean_score"] = 0.0
+                empty[f"{mode}_top10_std_score"] = 0.0
+                empty[f"{mode}_top1_to_top3_mean_ratio"] = 0.0
+                empty[f"{mode}_top1_to_top5_mean_ratio"] = 0.0
+                empty[f"{mode}_top1_to_top10_mean_ratio"] = 0.0
+            if "query_match" in enabled:
+                empty[f"{mode}_top1_query_doc_overlap_count"] = 0.0
+                empty[f"{mode}_top1_query_doc_query_overlap_ratio"] = 0.0
+                empty[f"{mode}_top1_query_doc_doc_overlap_ratio"] = 0.0
+                empty[f"{mode}_top1_query_doc_long_query_overlap_ratio"] = 0.0
+        for left, right in pairs:
+            if "basic" in enabled:
+                empty[f"{left}_{right}_jaccard"] = 0.0
+                empty[f"{left}_{right}_top1_same_doc"] = 0.0
+            if "agreement_rich" in enabled:
+                empty[f"{left}_{right}_overlap_count"] = 0.0
+                empty[f"{left}_{right}_top3_overlap_count"] = 0.0
+                empty[f"{left}_{right}_top5_overlap_count"] = 0.0
+                empty[f"{left}_top1_rank_in_{right}"] = 0.0
+                empty[f"{right}_top1_rank_in_{left}"] = 0.0
+                empty[f"{left}_top1_recip_rank_in_{right}"] = 0.0
+                empty[f"{right}_top1_recip_rank_in_{left}"] = 0.0
         return empty
 
     feats: dict[str, float] = {}
     doc_sets: dict[str, set[str]] = {}
+    doc_lists: dict[str, list[str]] = {}
+    top3_sets: dict[str, set[str]] = {}
+    top5_sets: dict[str, set[str]] = {}
     top_docs: dict[str, str] = {}
-    for mode in ("sparse", "dense", "hybrid"):
+    for mode in modes:
         payload = results_by_mode.get(mode, {})
         scores = _score_series(payload, 3)
+        scores5 = _score_series(payload, 5)
+        scores10 = _score_series(payload, 10)
         top1, top2 = scores[0], scores[1]
-        feats[f"{mode}_top1_score"] = float(top1)
-        feats[f"{mode}_top1_gap"] = float(top1 - top2)
-        feats[f"{mode}_top1_gap_ratio"] = float((top1 - top2) / max(abs(top1), 1e-6))
-        feats[f"{mode}_top3_mean_score"] = float(np.mean(scores))
-        feats[f"{mode}_top3_std_score"] = float(np.std(scores))
-        doc_ids = [str(item["doc_id"]) for item in payload.get("results", [])[:10]]
-        doc_sets[mode] = set(doc_ids)
+        if "basic" in enabled:
+            feats[f"{mode}_top1_score"] = float(top1)
+            feats[f"{mode}_top1_gap"] = float(top1 - top2)
+            feats[f"{mode}_top1_gap_ratio"] = float((top1 - top2) / max(abs(top1), 1e-6))
+            feats[f"{mode}_top3_mean_score"] = float(np.mean(scores))
+            feats[f"{mode}_top3_std_score"] = float(np.std(scores))
+        if "score_shape" in enabled:
+            feats[f"{mode}_top5_mean_score"] = float(np.mean(scores5))
+            feats[f"{mode}_top5_std_score"] = float(np.std(scores5))
+            feats[f"{mode}_top10_mean_score"] = float(np.mean(scores10))
+            feats[f"{mode}_top10_std_score"] = float(np.std(scores10))
+            feats[f"{mode}_top1_to_top3_mean_ratio"] = _safe_ratio(top1, float(np.mean(scores)))
+            feats[f"{mode}_top1_to_top5_mean_ratio"] = _safe_ratio(top1, float(np.mean(scores5)))
+            feats[f"{mode}_top1_to_top10_mean_ratio"] = _safe_ratio(top1, float(np.mean(scores10)))
+        if "query_match" in enabled:
+            top_doc_text = ""
+            top_result = payload.get("results", [])[:1]
+            if top_result:
+                top_doc_text = str(top_result[0].get("content", "") or "")
+            feats.update(
+                _query_doc_match_feature_block(
+                    query_text,
+                    top_doc_text,
+                    f"{mode}_top1_query_doc",
+                )
+            )
+        doc_ids = _doc_id_series(payload, 10)
+        doc_sets[mode] = set(doc_id for doc_id in doc_ids if doc_id)
+        doc_lists[mode] = doc_ids
+        top3_sets[mode] = set(doc_id for doc_id in doc_ids[:3] if doc_id)
+        top5_sets[mode] = set(doc_id for doc_id in doc_ids[:5] if doc_id)
         top_docs[mode] = doc_ids[0] if doc_ids else ""
-    for left, right in (("sparse", "dense"), ("sparse", "hybrid"), ("dense", "hybrid")):
+    for left, right in pairs:
         union = doc_sets[left] | doc_sets[right]
-        feats[f"{left}_{right}_jaccard"] = float(len(doc_sets[left] & doc_sets[right]) / len(union)) if union else 0.0
-        feats[f"{left}_{right}_top1_same_doc"] = float(bool(top_docs[left] and top_docs[left] == top_docs[right]))
+        overlap = doc_sets[left] & doc_sets[right]
+        if "basic" in enabled:
+            feats[f"{left}_{right}_jaccard"] = float(len(overlap) / len(union)) if union else 0.0
+            feats[f"{left}_{right}_top1_same_doc"] = float(bool(top_docs[left] and top_docs[left] == top_docs[right]))
+        if "agreement_rich" in enabled:
+            feats[f"{left}_{right}_overlap_count"] = float(len(overlap))
+            feats[f"{left}_{right}_top3_overlap_count"] = float(len(top3_sets[left] & top3_sets[right]))
+            feats[f"{left}_{right}_top5_overlap_count"] = float(len(top5_sets[left] & top5_sets[right]))
+        left_rank_in_right = _rank_of_doc(doc_lists[right], top_docs[left])
+        right_rank_in_left = _rank_of_doc(doc_lists[left], top_docs[right])
+        if "agreement_rich" in enabled:
+            feats[f"{left}_top1_rank_in_{right}"] = left_rank_in_right
+            feats[f"{right}_top1_rank_in_{left}"] = right_rank_in_left
+            feats[f"{left}_top1_recip_rank_in_{right}"] = _safe_ratio(1.0, left_rank_in_right)
+            feats[f"{right}_top1_recip_rank_in_{left}"] = _safe_ratio(1.0, right_rank_in_left)
     return feats
 
 
@@ -156,10 +272,11 @@ def combined_features(
     results_by_mode: dict[str, dict] | None = None,
     *,
     include_retrieval_features: bool = False,
+    retrieval_feature_groups: tuple[str, ...] | None = None,
 ) -> dict[str, float]:
     feats = query_features(text)
     if include_retrieval_features:
-        feats.update(retrieval_confidence_features(results_by_mode))
+        feats.update(retrieval_confidence_features(text, results_by_mode, groups=retrieval_feature_groups))
     return feats
 
 
@@ -168,14 +285,22 @@ def features_matrix(
     query_results: dict[str, dict] | None = None,
     *,
     include_retrieval_features: bool = False,
+    retrieval_feature_groups: tuple[str, ...] | None = None,
 ) -> tuple[np.ndarray, list[str]]:
-    feature_names = sorted(combined_features("", include_retrieval_features=include_retrieval_features).keys())
+    feature_names = sorted(
+        combined_features(
+            "",
+            include_retrieval_features=include_retrieval_features,
+            retrieval_feature_groups=retrieval_feature_groups,
+        ).keys()
+    )
     rows = []
     for query in queries:
         feats = combined_features(
             query["text"],
             query_results.get(query["query_id"]) if query_results else None,
             include_retrieval_features=include_retrieval_features,
+            retrieval_feature_groups=retrieval_feature_groups,
         )
         rows.append([feats[name] for name in feature_names])
     return np.asarray(rows, dtype=np.float32), feature_names
@@ -247,6 +372,7 @@ class QueryRouter:
         word_features: int = 2**12,
         char_features: int = 2**12,
         use_retrieval_features: bool = False,
+        retrieval_feature_groups: tuple[str, ...] | None = None,
         random_state: int = 42,
     ) -> None:
         self.feature_names: list[str] = []
@@ -257,6 +383,7 @@ class QueryRouter:
         self.word_features = int(word_features)
         self.char_features = int(char_features)
         self.use_retrieval_features = bool(use_retrieval_features)
+        self.retrieval_feature_groups = tuple(retrieval_feature_groups or RETRIEVAL_FEATURE_GROUPS)
         self.random_state = int(random_state)
         self.word_vectorizer = HashingVectorizer(
             analyzer="word",
@@ -304,6 +431,7 @@ class QueryRouter:
             queries,
             query_results,
             include_retrieval_features=self.use_retrieval_features,
+            retrieval_feature_groups=self.retrieval_feature_groups,
         )
         if fit:
             x_numeric = self._fit_numeric_stats(x_numeric)
@@ -361,6 +489,7 @@ class QueryRouter:
                     "word_features": self.word_features,
                     "char_features": self.char_features,
                     "use_retrieval_features": self.use_retrieval_features,
+                    "retrieval_feature_groups": self.retrieval_feature_groups,
                     "random_state": self.random_state,
                     "labels_": self.labels_,
                 },
@@ -377,6 +506,7 @@ class QueryRouter:
             word_features=payload.get("word_features", 2**12),
             char_features=payload.get("char_features", 2**12),
             use_retrieval_features=payload.get("use_retrieval_features", False),
+            retrieval_feature_groups=tuple(payload.get("retrieval_feature_groups", RETRIEVAL_FEATURE_GROUPS)),
             random_state=payload.get("random_state", 42),
         )
         obj.feature_names = payload["feature_names"]

@@ -60,6 +60,13 @@ def parse_args():
         help="Augment query-only router features with retrieval-confidence signals from sparse/dense/hybrid results.",
     )
     p.add_argument(
+        "--retrieval-feature-groups",
+        nargs="+",
+        choices=["basic", "score_shape", "agreement_rich", "query_match"],
+        default=[],
+        help="Optional retrieval-feature groups to enable. Defaults to all groups when --use-retrieval-features is set.",
+    )
+    p.add_argument(
         "--router-confidence-threshold",
         type=float,
         default=0.45,
@@ -83,22 +90,32 @@ def parse_args():
 def collect_query_results(
     queries: list[dict],
     retrievers: dict,
+    corpus: list[dict],
     topk: int,
     usd_per_1k_tokens: float,
 ) -> dict[str, dict]:
     from multiplexrag.data import approximate_token_count
 
     collected: dict[str, dict] = {}
+    content_by_doc_id = {
+        str(doc["doc_id"]): str(doc.get("content", "") or "")
+        for doc in corpus
+    }
     for query in queries:
         by_mode = {}
         query_tokens = approximate_token_count(query["text"])
         for mode, retriever in retrievers.items():
             results, latency_ms = retriever.search(query["text"], topk=topk)
+            enriched_results = []
+            for item in results:
+                row = dict(item)
+                row["content"] = content_by_doc_id.get(str(item["doc_id"]), "")
+                enriched_results.append(row)
             context_tokens = sum(int(item.get("token_count", 0)) for item in results)
             total_tokens = query_tokens + context_tokens
             by_mode[mode] = {
-                "results": results,
-                "doc_ids": [item["doc_id"] for item in results],
+                "results": enriched_results,
+                "doc_ids": [item["doc_id"] for item in enriched_results],
                 "latency_ms": float(latency_ms),
                 "estimated_total_tokens": float(total_tokens),
                 "estimated_cost_usd": float(total_tokens / 1000.0 * usd_per_1k_tokens),
@@ -267,7 +284,7 @@ def main():
     hybrid = HybridRetriever(sparse, dense)
     retrievers = {"sparse": sparse, "dense": dense, "hybrid": hybrid}
 
-    query_results = collect_query_results(queries, retrievers, args.topk, args.usd_per_1k_tokens)
+    query_results = collect_query_results(queries, retrievers, corpus, args.topk, args.usd_per_1k_tokens)
     train_queries, train_labels = label_queries(
         queries,
         train_qrels,
@@ -297,6 +314,7 @@ def main():
         min_confidence=args.router_confidence_threshold,
         fallback_mode=args.router_fallback_mode,
         use_retrieval_features=args.use_retrieval_features,
+        retrieval_feature_groups=tuple(args.retrieval_feature_groups),
     ).fit(train_queries, train_labels, train_query_results)
     preds = router.predict(test_queries, test_query_results)
     labels = sorted(set(train_labels) | set(test_labels))
@@ -357,6 +375,7 @@ def main():
             "confidence_threshold": args.router_confidence_threshold,
             "fallback_mode": args.router_fallback_mode,
             "use_retrieval_features": args.use_retrieval_features,
+            "retrieval_feature_groups": args.retrieval_feature_groups,
             "label_metrics": label_metrics,
             "label_weights": label_weights,
             "label_tie_preference": args.label_tie_preference,

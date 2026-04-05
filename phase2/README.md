@@ -42,7 +42,17 @@ So the empirical goals in Phase 2 are:
 
 ## 3. Datasets And Task
 
-Phase 2 uses two main BEIR datasets plus two additional validation datasets:
+Phase 2 uses three main report datasets plus one supplemental validation dataset.
+
+The reporting scope is:
+
+- primary Phase 2 results: `SciFact`, `SCIDOCS`, and `NFCorpus`
+- supplemental validation results: `FiQA`
+
+This distinction is important for the final project narrative.
+
+- `SciFact`, `SCIDOCS`, and `NFCorpus` are the main evidence used to answer the proposal question across different retrieval settings
+- `FiQA` is used as a supplemental generalization check, and as a useful negative result showing that a router should not be promoted when a fixed retriever remains stronger
 
 ### SciFact
 
@@ -70,7 +80,7 @@ Because the downloaded SCIDOCS setup does not provide a separate train qrels fil
 - train qrels: `data/fiqa/raw/qrels_train.jsonl`
 - test qrels: `data/fiqa/raw/qrels_test.jsonl`
 
-FiQA was added later as an additional dataset-level check to see whether the router improvements observed on SciFact and SCIDOCS generalized to a third retrieval setting.
+FiQA was added later as a supplemental dataset-level check to see whether the router improvements observed on SciFact and SCIDOCS generalized to a third retrieval setting.
 
 ### NFCorpus
 
@@ -80,7 +90,7 @@ FiQA was added later as an additional dataset-level check to see whether the rou
 - validation qrels: `data/nfcorpus/raw/qrels_validation.jsonl`
 - test qrels: `data/nfcorpus/raw/qrels_test.jsonl`
 
-NFCorpus was added as a fourth dataset to test whether the project conclusions also held on a biomedical retrieval task with natural-language consumer questions and terminology-heavy medical documents.
+NFCorpus was added as a third main report dataset to test whether the project conclusions also held on a biomedical retrieval task with natural-language consumer questions and terminology-heavy medical documents.
 
 This dataset is especially useful for MultiplexRAG because it creates a realistic tension between lexical and semantic matching:
 
@@ -265,7 +275,7 @@ This is important because it shows the best fixed strategy is dataset-dependent:
 
 That is directly consistent with the proposal’s main motivation.
 
-### 8.3 FiQA
+### 8.3 FiQA Supplemental Validation
 
 FiQA was used as an additional validation dataset rather than the main Phase 2 showcase. The best fixed baseline on FiQA is `dense`, and the default router did not beat it.
 
@@ -289,7 +299,7 @@ So at the current stage, the preferred FiQA deployment strategy is still simply 
 
 ### 8.4 NFCorpus
 
-NFCorpus was used as a fourth dataset-level check to see whether the project conclusions would extend to biomedical retrieval, where natural-language user questions must be matched against more terminology-heavy documents.
+NFCorpus serves as the third main Phase 2 report dataset and tests whether the project conclusions extend to biomedical retrieval, where natural-language user questions must be matched against more terminology-heavy documents.
 
 Fixed-baseline evaluation on the NFCorpus test split from [results/nfcorpus/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_report.json):
 
@@ -307,12 +317,13 @@ Interpretation of the default NFCorpus result:
 - the default query-only router improves `Recall@10` and `nDCG@10` over fixed `hybrid`
 - however, the default router does not beat fixed `hybrid` on `MRR@10`
 
-This pattern is important. It shows that the router is already capturing some useful query-dependent signal, because it finds slightly more relevant documents overall and improves aggregate ranking quality. However, it is still not consistently strong enough to outperform the best fixed retrieval strategy on the most top-rank-sensitive metric.
+This pattern is important. It shows that the router is already capturing useful query-dependent signal, because it finds slightly more relevant documents overall and improves aggregate ranking quality. At the same time, NFCorpus makes clear that a default query-only router is not yet a strong enough final answer for every dataset.
 
-So the initial NFCorpus takeaway is:
+So the main Phase 2 takeaway from NFCorpus is:
 
 - the dataset benefits strongly from combining lexical and semantic evidence
 - the default router is promising, but not yet a clear deployment winner
+- router gains on this dataset depend on choosing a dataset-appropriate fallback policy rather than relying on the same recipe that worked elsewhere
 - the oracle gap remains substantial, so query-aware branch selection still has room to improve
 
 Because NFCorpus provides a validation split, it is a good dataset for studying router recipe selection more cleanly than datasets that require self-splitting. That made it possible to run a focused ablation over fallback policy, retrieval-confidence features, and weak-label design.
@@ -448,12 +459,16 @@ The strongest overall NFCorpus router recipe tested so far is:
 - use `hybrid` as the fallback branch
 - optionally raise the confidence threshold to `0.5` if the priority is more stable recall and nDCG
 
-This result matters because it adds another form of dataset dependence:
+For final reporting, the important point is not just that NFCorpus needed more tuning. The important point is that NFCorpus provides direct evidence for the project's dataset-aware claim.
+
+It shows that:
 
 - on SCIDOCS, the main gain came from fixing weak-label bias and then adding retrieval features
 - on NFCorpus, the main gain came from retrieval features plus a dataset-appropriate fallback policy
 
 So the broader lesson is not merely that router performance varies by dataset. The best way to improve the router also varies by dataset.
+
+That makes NFCorpus a strong main-report dataset, because it demonstrates a different but equally important success condition for MultiplexRAG: not only which branch is best, but which router training recipe is appropriate for that dataset.
 
 ### 9.5 FiQA Validation
 
@@ -528,12 +543,12 @@ Supported.
 
 - SciFact router beats fixed `hybrid`
 - SCIDOCS router beats fixed `dense` under the best dataset-aware Phase 2 configuration
-- NFCorpus validation ablations show that router performance can surpass fixed `hybrid`, but the best NFCorpus result depends on retrieval features and a `hybrid` fallback policy
+- NFCorpus shows that router performance can surpass fixed `hybrid` once the router is given a dataset-appropriate fallback policy and retrieval-confidence features
 
 But Phase 2 also shows an important qualification:
 
 - on FiQA, the router did not beat fixed `dense`
-- on NFCorpus, the default router was not enough; router gains only became convincing after dataset-specific fallback tuning
+- on NFCorpus, the default router was not enough; the gain only became convincing after dataset-specific fallback tuning
 
 This does not weaken the project. Instead, it strengthens the realism of the conclusion: router usefulness is dataset-dependent, and a router should only be preferred when it empirically beats strong fixed alternatives.
 
@@ -614,13 +629,20 @@ This would turn the current project from a single-router experiment into a reusa
 
 Phase 2 successfully advances the original MultiplexRAG proposal from a simple routing baseline to a much stronger query-aware retrieval selector.
 
+For final reporting purposes, the clearest Phase 2 storyline is:
+
+- primary result dataset 1: `SciFact`
+- primary result dataset 2: `SCIDOCS`
+- primary result dataset 3: `NFCorpus`
+- supplemental generalization check: `FiQA`
+
 The main conclusions are:
 
 - retrieval preference is dataset-dependent
 - a lightweight logistic-regression router with richer features is already strong enough to beat the best fixed baseline on SciFact
 - SCIDOCS required more careful supervision design and retrieval-side confidence signals
 - once those were added, the router also slightly beat the best fixed SCIDOCS baseline
-- NFCorpus showed a different improvement pattern: retrieval-confidence features helped, but the largest gain came from replacing the default dense fallback with a hybrid fallback that matched the dataset’s strongest fixed baseline
+- NFCorpus confirmed the same overall project thesis under a different retrieval setting: router gains were achievable, but only after aligning the fallback policy with the dataset's strongest fixed baseline and adding retrieval-confidence features
 - FiQA showed that router gains are not universal; for that dataset, fixed `dense` remains the strongest practical strategy so far
 
 So the central proposal idea is supported: query-aware routing can improve over a single fixed retrieval strategy, and the quality-cost tradeoff is best understood through both baseline comparison and oracle analysis.
