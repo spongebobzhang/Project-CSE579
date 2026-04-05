@@ -112,8 +112,8 @@ In other words:
 
 Relevant experiment files:
 
-- [results/scidocs_ablation/router_margin_0.0.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs_ablation/router_margin_0.0.json)
-- [results/scidocs_ablation/retrieval_only_cached.summary.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs_ablation/retrieval_only_cached.summary.json)
-- [results/scidocs_ablation/margin_dense_retrieval_cached.summary.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs_ablation/margin_dense_retrieval_cached.summary.json)
-- [results/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs/router_report.json)
-- [phase1/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/phase1/scidocs/router_report.json)
+- [results/scidocs_ablation/router_margin_0.0.json](../results/scidocs_ablation/router_margin_0.0.json)
+- [results/scidocs_ablation/retrieval_only_cached.summary.json](../results/scidocs_ablation/retrieval_only_cached.summary.json)
+- [results/scidocs_ablation/margin_dense_retrieval_cached.summary.json](../results/scidocs_ablation/margin_dense_retrieval_cached.summary.json)
+- [results/scidocs/router_report.json](../results/scidocs/router_report.json)
+- [phase1/scidocs/router_report.json](../phase1/scidocs/router_report.json)

@@ -1,6 +1,6 @@
 # MultiplexRAG Project Starter
 
-Final course report: [REPORT.md](/home/zzhan621/CSE579/Project-CSE579/REPORT.md)
+Final course report: [REPORT.md](REPORT.md)
 
 This project follows the proposal goal: compare Dense/Sparse/Hybrid retrieval and build a query-aware router.
 

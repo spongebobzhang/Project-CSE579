@@ -16,10 +16,10 @@ The overall learning target is:
 
 The current router pipeline is implemented across these files:
 
-- [scripts/train_router.py](/home/zzhan621/CSE579/Project-CSE579/scripts/train_router.py): end-to-end routing experiment
-- [src/multiplexrag/router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py): query features, oracle labeling rule, and confidence-aware logistic router
-- [src/multiplexrag/retrieval.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/retrieval.py): sparse, dense, and hybrid retrievers used to generate router supervision
-- [src/multiplexrag/eval_utils.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/eval_utils.py): ranking metrics used during labeling and evaluation
+- [scripts/train_router.py](../scripts/train_router.py): end-to-end routing experiment
+- [src/multiplexrag/router.py](../src/multiplexrag/router.py): query features, oracle labeling rule, and confidence-aware logistic router
+- [src/multiplexrag/retrieval.py](../src/multiplexrag/retrieval.py): sparse, dense, and hybrid retrievers used to generate router supervision
+- [src/multiplexrag/eval_utils.py](../src/multiplexrag/eval_utils.py): ranking metrics used during labeling and evaluation
 
 ## End-to-End Process
 
@@ -51,8 +51,8 @@ This means the router is learning a strategy-selection policy, not document rele
 
 In code, the weak labels are produced by:
 
-- collecting query results for all three modes in [scripts/train_router.py](/home/zzhan621/CSE579/Project-CSE579/scripts/train_router.py)
-- selecting the best mode with `best_mode_for_query(...)` in [src/multiplexrag/router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py)
+- collecting query results for all three modes in [scripts/train_router.py](../scripts/train_router.py)
+- selecting the best mode with `best_mode_for_query(...)` in [src/multiplexrag/router.py](../src/multiplexrag/router.py)
 
 Current default weak-label rule:
 
@@ -67,7 +67,7 @@ Optional router-training settings now also support:
 
 ## Current Query Features
 
-The current implementation now uses a richer query-only feature set from [router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py):
+The current implementation now uses a richer query-only feature set from [router.py](../src/multiplexrag/router.py):
 
 - character length
 - token length

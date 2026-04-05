@@ -24,7 +24,7 @@ This is the current local rerun produced from the restored `sentence-transformer
 - Queries: `data/scifact/raw/queries.jsonl`
 - Train qrels: `data/scifact/raw/qrels_train.jsonl`
 - Test qrels: `data/scifact/raw/qrels_test.jsonl`
-- Router report: [phase1/scifact/router_report.json](/home/zzhan621/CSE579/Project-CSE579/phase1/scifact/router_report.json)
+- Router report: [phase1/scifact/router_report.json](scifact/router_report.json)
 
 | Method | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) |
 | --- | ---: | ---: | ---: | ---: |
@@ -60,7 +60,7 @@ This is the current second-dataset snapshot used to replace the earlier FiQA-bas
 - Router train qrels: `data/scidocs/raw/qrels_router_train.jsonl`
 - Router test qrels: `data/scidocs/raw/qrels_router_test.jsonl`
 - Router split metadata: `data/scidocs/raw/qrels_router_split_meta.json`
-- Router report: [phase1/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/phase1/scidocs/router_report.json)
+- Router report: [phase1/scidocs/router_report.json](scidocs/router_report.json)
 
 Fixed-baseline evaluation on the full official qrels split:
 
@@ -110,7 +110,7 @@ Takeaways:
 
 ## Files
 
-- [phase1_results.json](/home/zzhan621/CSE579/Project-CSE579/phase1/phase1_results.json): structured multi-dataset Phase 1 snapshot
-- [router_method.md](/home/zzhan621/CSE579/Project-CSE579/phase1/router_method.md): explanation of the current router design
-- [phase1/scifact/router_report.json](/home/zzhan621/CSE579/Project-CSE579/phase1/scifact/router_report.json): current SciFact report
-- [phase1/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/phase1/scidocs/router_report.json): current SCIDOCS report
+- [phase1_results.json](phase1_results.json): structured multi-dataset Phase 1 snapshot
+- [router_method.md](router_method.md): explanation of the current router design
+- [phase1/scifact/router_report.json](scifact/router_report.json): current SciFact report
+- [phase1/scidocs/router_report.json](scidocs/router_report.json): current SCIDOCS report

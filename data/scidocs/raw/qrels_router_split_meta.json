@@ -1,5 +1,5 @@
 {
-  "source_qrels": "/home/zzhan621/CSE579/Project-CSE579/data/scidocs/raw/qrels_test.jsonl",
+  "source_qrels": "data/scidocs/raw/qrels_test.jsonl",
   "split_unit": "query_id",
   "train_ratio": 0.8,
   "seed": 42,
@@ -9,6 +9,6 @@
   "total_unique_queries": 1000,
   "train_unique_queries": 800,
   "test_unique_queries": 200,
-  "train_out": "/home/zzhan621/CSE579/Project-CSE579/data/scidocs/raw/qrels_router_train.jsonl",
-  "test_out": "/home/zzhan621/CSE579/Project-CSE579/data/scidocs/raw/qrels_router_test.jsonl"
+  "train_out": "data/scidocs/raw/qrels_router_train.jsonl",
+  "test_out": "data/scidocs/raw/qrels_router_test.jsonl"
 }

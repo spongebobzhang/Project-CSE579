@@ -63,22 +63,22 @@ The starting point is the existing SCIDOCS Phase 2 best configuration:
 
 The baseline report is:
 
-- [results/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs/router_report.json)
+- [results/scidocs/router_report.json](../results/scidocs/router_report.json)
 
 The new Phase 3 experiment artifacts are:
 
-- [phase3/scidocs/router_richer_features_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/router_richer_features_report.json)
-- [phase3/scidocs/router_richer_features_predictions.jsonl](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/router_richer_features_predictions.jsonl)
-- [phase3/scidocs/router_richer_features.pkl](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/router_richer_features.pkl)
-- [phase3/scidocs/query_match/router_basic_query_match_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/query_match/router_basic_query_match_report.json)
-- [phase3/scidocs/query_match/router_basic_score_shape_query_match_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/query_match/router_basic_score_shape_query_match_report.json)
-- [phase3/scidocs/ablations/router_basic_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/ablations/router_basic_report.json)
-- [phase3/scidocs/ablations/router_basic_score_shape_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/ablations/router_basic_score_shape_report.json)
-- [phase3/scidocs/ablations/router_basic_agreement_rich_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scidocs/ablations/router_basic_agreement_rich_report.json)
+- [phase3/scidocs/router_richer_features_report.json](scidocs/router_richer_features_report.json)
+- [phase3/scidocs/router_richer_features_predictions.jsonl](scidocs/router_richer_features_predictions.jsonl)
+- [phase3/scidocs/router_richer_features.pkl](scidocs/router_richer_features.pkl)
+- [phase3/scidocs/query_match/router_basic_query_match_report.json](scidocs/query_match/router_basic_query_match_report.json)
+- [phase3/scidocs/query_match/router_basic_score_shape_query_match_report.json](scidocs/query_match/router_basic_score_shape_query_match_report.json)
+- [phase3/scidocs/ablations/router_basic_report.json](scidocs/ablations/router_basic_report.json)
+- [phase3/scidocs/ablations/router_basic_score_shape_report.json](scidocs/ablations/router_basic_score_shape_report.json)
+- [phase3/scidocs/ablations/router_basic_agreement_rich_report.json](scidocs/ablations/router_basic_agreement_rich_report.json)
 
 ## What Changed
 
-The richer retrieval feature set expanded the retrieval-side numeric features in [router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py).
+The richer retrieval feature set expanded the retrieval-side numeric features in [router.py](../src/multiplexrag/router.py).
 
 New score-shape features included:
 
@@ -275,7 +275,7 @@ To complete coverage of the three main project datasets, the same `basic + query
 
 Relevant artifact:
 
-- [phase3/scifact/router_basic_query_match_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/scifact/router_basic_query_match_report.json)
+- [phase3/scifact/router_basic_query_match_report.json](scifact/router_basic_query_match_report.json)
 
 ### Comparison
 
@@ -316,10 +316,10 @@ The best SCIDOCS Phase 3 direction, `basic + query_match`, was then tested on NF
 
 Relevant artifacts:
 
-- [results/nfcorpus/router_rf_hybridfb_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_rf_hybridfb_report.json)
-- [results/nfcorpus/router_rf_hybridfb_t05_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_rf_hybridfb_t05_report.json)
-- [phase3/nfcorpus/router_basic_query_match_hybridfb_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/nfcorpus/router_basic_query_match_hybridfb_report.json)
-- [phase3/nfcorpus/router_basic_query_match_hybridfb_t05_report.json](/home/zzhan621/CSE579/Project-CSE579/phase3/nfcorpus/router_basic_query_match_hybridfb_t05_report.json)
+- [results/nfcorpus/router_rf_hybridfb_report.json](../results/nfcorpus/router_rf_hybridfb_report.json)
+- [results/nfcorpus/router_rf_hybridfb_t05_report.json](../results/nfcorpus/router_rf_hybridfb_t05_report.json)
+- [phase3/nfcorpus/router_basic_query_match_hybridfb_report.json](nfcorpus/router_basic_query_match_hybridfb_report.json)
+- [phase3/nfcorpus/router_basic_query_match_hybridfb_t05_report.json](nfcorpus/router_basic_query_match_hybridfb_t05_report.json)
 
 ### Comparison
 

@@ -11,7 +11,7 @@ That historical snapshot is useful because it explains why the original SCIDOCS 
 
 It is not the current best SCIDOCS router configuration anymore.
 
-The later margin-aware plus retrieval-confidence variant is documented separately in [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md) and now slightly beats fixed `dense` on the SCIDOCS self-split setting.
+The later margin-aware plus retrieval-confidence variant is documented separately in [phase2/scidocs_margin_retrieval_comparison.md](scidocs_margin_retrieval_comparison.md) and now slightly beats fixed `dense` on the SCIDOCS self-split setting.
 
 ## Question
 

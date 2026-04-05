@@ -32,10 +32,10 @@ The result is a router that is still easy to explain, but is substantially more 
 
 The current Phase 2 router process is mainly implemented in:
 
-- [scripts/train_router.py](/home/zzhan621/CSE579/Project-CSE579/scripts/train_router.py)
-- [src/multiplexrag/router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py)
-- [src/multiplexrag/retrieval.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/retrieval.py)
-- [src/multiplexrag/eval_utils.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/eval_utils.py)
+- [scripts/train_router.py](../scripts/train_router.py)
+- [src/multiplexrag/router.py](../src/multiplexrag/router.py)
+- [src/multiplexrag/retrieval.py](../src/multiplexrag/retrieval.py)
+- [src/multiplexrag/eval_utils.py](../src/multiplexrag/eval_utils.py)
 
 ## End-to-End Process
 
@@ -66,7 +66,7 @@ For each query in the training split:
 4. compare those ranked lists against ground-truth qrels
 5. choose the best branch as the training label
 
-In the current implementation, the label decision is produced by `best_mode_for_query(...)` in [router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py).
+In the current implementation, the label decision is produced by `best_mode_for_query(...)` in [router.py](../src/multiplexrag/router.py).
 
 Default weak-label configuration:
 
@@ -471,7 +471,7 @@ After the SCIDOCS error analysis, a more targeted ablation was run:
 - make weak labels prefer `dense` on ties / near-ties
 - add retrieval-confidence features to the router input
 
-The detailed write-up is in [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md).
+The detailed write-up is in [phase2/scidocs_margin_retrieval_comparison.md](scidocs_margin_retrieval_comparison.md).
 
 High-level outcome:
 

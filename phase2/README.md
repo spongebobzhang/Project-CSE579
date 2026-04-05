@@ -153,8 +153,8 @@ Phase 2 upgrades that design in several ways:
 
 The main implementation lives in:
 
-- [scripts/train_router.py](/home/zzhan621/CSE579/Project-CSE579/scripts/train_router.py)
-- [src/multiplexrag/router.py](/home/zzhan621/CSE579/Project-CSE579/src/multiplexrag/router.py)
+- [scripts/train_router.py](../scripts/train_router.py)
+- [src/multiplexrag/router.py](../src/multiplexrag/router.py)
 
 ### Query Features
 
@@ -232,7 +232,7 @@ The project also tracks:
 
 ### 8.1 SciFact
 
-Current best SciFact result from [results/scifact/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scifact/router_report.json):
+Current best SciFact result from [results/scifact/router_report.json](../results/scifact/router_report.json):
 
 | Method | Recall@10 | MRR@10 | nDCG@10 |
 | --- | ---: | ---: | ---: |
@@ -252,7 +252,7 @@ So on SciFact, the proposal goal is supported: adaptive routing improves over th
 
 ### 8.2 SCIDOCS
 
-Current best SCIDOCS result from [results/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs/router_report.json):
+Current best SCIDOCS result from [results/scidocs/router_report.json](../results/scidocs/router_report.json):
 
 | Method | Recall@10 | MRR@10 | nDCG@10 |
 | --- | ---: | ---: | ---: |
@@ -301,7 +301,7 @@ So at the current stage, the preferred FiQA deployment strategy is still simply 
 
 NFCorpus serves as the third main Phase 2 report dataset and tests whether the project conclusions extend to biomedical retrieval, where natural-language user questions must be matched against more terminology-heavy documents.
 
-Fixed-baseline evaluation on the NFCorpus test split from [results/nfcorpus/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_report.json):
+Fixed-baseline evaluation on the NFCorpus test split from [results/nfcorpus/router_report.json](../results/nfcorpus/router_report.json):
 
 | Method | Recall@10 | MRR@10 | nDCG@10 |
 | --- | ---: | ---: | ---: |
@@ -334,7 +334,7 @@ Because NFCorpus provides a validation split, it is a good dataset for studying 
 
 The earlier default SCIDOCS router underperformed fixed `dense`.
 
-The detailed diagnosis in [phase2/scidocs_router_error_analysis.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_router_error_analysis.md) showed that the problem was not mainly model capacity. The more important issue was weak-label bias:
+The detailed diagnosis in [phase2/scidocs_router_error_analysis.md](scidocs_router_error_analysis.md) showed that the problem was not mainly model capacity. The more important issue was weak-label bias:
 
 - many `dense` and `hybrid` queries tied under `MRR@10`
 - tie-breaking preferred `hybrid`
@@ -364,7 +364,7 @@ The strongest SCIDOCS improvement came from combining:
 - margin-aware dense-favoring weak labels
 - retrieval-confidence features
 
-The comparison is documented in [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md).
+The comparison is documented in [phase2/scidocs_margin_retrieval_comparison.md](scidocs_margin_retrieval_comparison.md).
 
 Key SCIDOCS ablation results:
 
@@ -649,12 +649,12 @@ So the central proposal idea is supported: query-aware routing can improve over 
 
 ## 14. Key Files
 
-- [phase2/router_method.md](/home/zzhan621/CSE579/Project-CSE579/phase2/router_method.md)
-- [phase2/scidocs_router_error_analysis.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_router_error_analysis.md)
-- [phase2/scidocs_margin_retrieval_comparison.md](/home/zzhan621/CSE579/Project-CSE579/phase2/scidocs_margin_retrieval_comparison.md)
-- [results/scifact/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scifact/router_report.json)
-- [results/scidocs/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/scidocs/router_report.json)
-- [results/nfcorpus/router_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_report.json)
-- [results/nfcorpus/router_rf_hybridfb_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_rf_hybridfb_report.json)
-- [results/nfcorpus/router_rf_hybridfb_t05_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_rf_hybridfb_t05_report.json)
-- [results/nfcorpus/router_rf_mm_report.json](/home/zzhan621/CSE579/Project-CSE579/results/nfcorpus/router_rf_mm_report.json)
+- [phase2/router_method.md](router_method.md)
+- [phase2/scidocs_router_error_analysis.md](scidocs_router_error_analysis.md)
+- [phase2/scidocs_margin_retrieval_comparison.md](scidocs_margin_retrieval_comparison.md)
+- [results/scifact/router_report.json](../results/scifact/router_report.json)
+- [results/scidocs/router_report.json](../results/scidocs/router_report.json)
+- [results/nfcorpus/router_report.json](../results/nfcorpus/router_report.json)
+- [results/nfcorpus/router_rf_hybridfb_report.json](../results/nfcorpus/router_rf_hybridfb_report.json)
+- [results/nfcorpus/router_rf_hybridfb_t05_report.json](../results/nfcorpus/router_rf_hybridfb_t05_report.json)
+- [results/nfcorpus/router_rf_mm_report.json](../results/nfcorpus/router_rf_mm_report.json)
