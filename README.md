@@ -62,7 +62,7 @@ Run the whole pipeline for one prepared dataset:
 By default, the pipeline now uses `--router-preset auto`, which selects the current best integrated router configuration for each dataset inside `scripts/run_pipeline.py`:
 
 - `scifact`: default Phase 2 router
-- `scidocs`: margin-aware dense-favoring labels + retrieval-confidence features
+- `scidocs`: margin-aware dense-favoring labels + `basic` retrieval-confidence features
 
 Current best integrated one-command results:
 
@@ -167,6 +167,11 @@ The same options now work through the one-command pipeline. For example:
   --label-weights 0.5 0.3 0.2 \
   --label-tie-preference dense
 ```
+
+If you want to control which retrieval-side feature groups are enabled through the one-command pipeline, you can also pass:
+
+- `--retrieval-feature-groups basic`
+- `--retrieval-feature-groups basic query_match`
 
 If you want explicit dataset-aware presets instead of manually passing label arguments:
 

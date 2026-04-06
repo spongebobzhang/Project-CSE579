@@ -72,6 +72,13 @@ def parse_args():
         help="Pass retrieval-confidence features through to train_router.py.",
     )
     p.add_argument(
+        "--retrieval-feature-groups",
+        nargs="+",
+        choices=["basic", "score_shape", "agreement_rich", "query_match"],
+        default=[],
+        help="Optional retrieval-feature groups to pass through to train_router.py.",
+    )
+    p.add_argument(
         "--router-confidence-threshold",
         type=float,
         default=0.45,
@@ -122,6 +129,7 @@ def resolve_router_settings(args, dataset_name: str) -> Dict[str, Any]:
         "label_near_tie_mode": args.label_near_tie_mode,
         "label_near_tie_margin": float(args.label_near_tie_margin),
         "use_retrieval_features": bool(args.use_retrieval_features),
+        "retrieval_feature_groups": list(args.retrieval_feature_groups),
         "router_confidence_threshold": float(args.router_confidence_threshold),
         "router_fallback_mode": args.router_fallback_mode,
     }
@@ -142,6 +150,7 @@ def resolve_router_settings(args, dataset_name: str) -> Dict[str, Any]:
                 "label_near_tie_mode": "dense",
                 "label_near_tie_margin": 0.0,
                 "use_retrieval_features": True,
+                "retrieval_feature_groups": ["basic"],
                 "router_confidence_threshold": 0.45,
                 "router_fallback_mode": "dense",
             }
@@ -155,6 +164,7 @@ def resolve_router_settings(args, dataset_name: str) -> Dict[str, Any]:
                 "label_near_tie_mode": "",
                 "label_near_tie_margin": 0.0,
                 "use_retrieval_features": False,
+                "retrieval_feature_groups": [],
                 "router_confidence_threshold": 0.45,
                 "router_fallback_mode": "dense",
             }
@@ -171,6 +181,8 @@ def resolve_router_settings(args, dataset_name: str) -> Dict[str, Any]:
             settings["label_near_tie_margin"] = float(args.label_near_tie_margin)
         if args.use_retrieval_features:
             settings["use_retrieval_features"] = True
+        if args.retrieval_feature_groups:
+            settings["retrieval_feature_groups"] = list(args.retrieval_feature_groups)
         if args.label_tie_preference != "hybrid":
             settings["label_tie_preference"] = args.label_tie_preference
         if args.router_confidence_threshold != 0.45:
@@ -306,6 +318,8 @@ def main():
             router_cmd.extend(["--label-near-tie-margin", str(router_settings["label_near_tie_margin"])])
         if router_settings["use_retrieval_features"]:
             router_cmd.append("--use-retrieval-features")
+        if router_settings["retrieval_feature_groups"]:
+            router_cmd.extend(["--retrieval-feature-groups", *router_settings["retrieval_feature_groups"]])
         run_step(router_cmd)
 
     print("\nDone.", flush=True)

@@ -108,7 +108,7 @@ The router developed in four stages across the project, and each phase changed a
 
 #### Phase 1: Baseline Query-Aware Router
 
-Phase 1 established the basic MultiplexRAG setup and treated the router mainly as a proof-of-concept strategy selector. Its main purpose was to show that query-aware routing was a meaningful project direction at all. The router in this stage relied on a relatively simple feature design and served primarily as an initial benchmark against fixed sparse, dense, and hybrid retrieval.
+Phase 1 established the basic MultiplexRAG setup and served as the first full router benchmark against fixed sparse, dense, and hybrid retrieval. In the current archived project artifacts, the saved Phase 1 router snapshots already use the classifier-based routing framework with confidence-aware fallback. So Phase 1 should be interpreted as the first end-to-end router baseline of the final codebase, rather than as a completely different pre-classifier prototype.
 
 In other words, Phase 1 answered the first question:
 
@@ -236,7 +236,7 @@ The router contribution became stronger across the four project phases because e
 
 ### 8.1 Phase 1
 
-Phase 1 established the baseline MultiplexRAG setting and showed that fixed sparse, dense, and hybrid retrieval behaved differently enough to make query-aware routing a meaningful problem. The Phase 1 router itself was still relatively simple, but the experiments already showed that no single retrieval branch dominated uniformly across query types.
+Phase 1 established the baseline MultiplexRAG setting and showed that fixed sparse, dense, and hybrid retrieval behaved differently enough to make query-aware routing a meaningful problem. In the archived artifacts, the Phase 1 router should be read as the first full classifier-based baseline rather than as a separate hand-built rule system. Its main role in the project was to create the first strong reference point for later improvements.
 
 Representative Phase 1 results:
 
@@ -249,7 +249,7 @@ The most important Phase 1 evidence was therefore not only the router score itse
 
 - fixed best retrieval already differed by dataset
 - the oracle remained clearly stronger than the learned router
-- the baseline router was strong enough to justify further work, but not yet strong enough to end the project story
+- the baseline router was strong enough to justify further work, but still left clear room for better supervision, better features, and better calibration
 
 The Phase 1 conclusion was:
 
