@@ -6,7 +6,7 @@
 
 This project studies whether retrieval can be improved by routing each query to the most suitable representation instead of using one fixed strategy for all queries. The system compares sparse, dense, and hybrid retrieval over the same corpus, then trains a lightweight router to choose among them.
 
-The main finding is that no single retrieval strategy is universally best, and the best router recipe is also dataset-dependent. On SciFact, the router outperformed the strongest fixed baseline. On SCIDOCS, a dataset-specific router with improved weak labeling and retrieval-confidence features slightly outperformed the strongest fixed baseline. On NFCorpus, the key improvement came from aligning the fallback policy with the dataset's strongest fixed retriever. A later Phase 3 refinement showed that lightweight query-to-top-document match features further improved the router on SCIDOCS and NFCorpus, while remaining competitive on SciFact. FiQA served as a useful negative result, showing that a router should not be adopted when it does not beat a strong fixed retriever.
+The main finding is that no single retrieval strategy is universally best, and the best router recipe is also dataset-dependent. On SciFact, the router outperformed the strongest fixed baseline. On SCIDOCS, a dataset-specific router with improved weak labeling, retrieval-confidence features, query-match features, and a tuned fallback threshold outperformed the strongest fixed baseline. On NFCorpus, the key improvements came from aligning the fallback policy with the dataset's strongest fixed retriever and then adding transferable query-match features, while still preserving dataset-specific threshold calibration.
 
 Overall, the project supports the central MultiplexRAG hypothesis: query-aware routing can improve retrieval quality, but it works best when the routing policy is designed and selected with respect to the dataset rather than assumed to be universal.
 
@@ -41,7 +41,7 @@ The report focuses on the following research questions:
 
 ## 4. Datasets
 
-The final report uses three primary datasets and one supplemental dataset.
+The final report uses three primary datasets.
 
 ### 4.1 Primary Datasets
 
@@ -56,12 +56,6 @@ SCIDOCS is a larger scientific retrieval dataset. In the available local setup, 
 #### NFCorpus
 
 NFCorpus is a biomedical retrieval dataset that matches consumer-style natural-language questions against terminology-heavy medical documents. This creates a strong tension between lexical and semantic matching, making it a useful third primary dataset. Unlike SCIDOCS, it also provides a validation split, which makes router recipe selection cleaner and more realistic.
-
-### 4.2 Supplemental Dataset
-
-#### FiQA
-
-FiQA is included as a supplemental generalization check. It is especially useful because it provides a negative result: although router variants improved over weaker baselines, they still did not beat the strongest fixed dense retriever. This helps clarify that a router should only be adopted when it truly improves retrieval quality.
 
 ## 5. Method
 
@@ -108,6 +102,56 @@ The router is trained with weak labels rather than manual query-type annotations
 
 The baseline label rule uses MRR@10. Later experiments also test multi-metric labels, dense-favoring tie handling, and margin-aware labeling.
 
+### 5.4 Router Evolution Across Phases
+
+The router developed in four stages across the project, and each phase changed a different part of the routing problem.
+
+#### Phase 1: Baseline Query-Aware Router
+
+Phase 1 established the basic MultiplexRAG setup and treated the router mainly as a proof-of-concept strategy selector. Its main purpose was to show that query-aware routing was a meaningful project direction at all. The router in this stage relied on a relatively simple feature design and served primarily as an initial benchmark against fixed sparse, dense, and hybrid retrieval.
+
+In other words, Phase 1 answered the first question:
+
+`is query-aware routing worth studying in this retrieval setting?`
+
+#### Phase 2: Stronger Query-Only Router
+
+Phase 2 turned the router into a stronger and more practical model. The key upgrades were:
+
+- richer handcrafted query features
+- hashed lexical features over the query text
+- a class-balanced logistic-regression classifier
+- confidence-aware fallback behavior
+- a clearer weak-supervision pipeline based on retrieval outcomes
+
+This phase shifted the router from a weak baseline into a serious retrieval-strategy selector. It also established the distinction between offline supervision, where all branches are run to generate labels, and online inference, where only the selected branch is used.
+
+#### Phase 3: Retrieval-Side Feature Design
+
+Phase 3 asked a more specific question:
+
+`which retrieval-side signals actually help the router?`
+
+Instead of changing the classifier again, this phase expanded the router input with retrieval-confidence features. Several feature families were tested, including `basic`, `score_shape`, `agreement_rich`, and `query_match`.
+
+The main lesson from Phase 3 was that more features were not automatically better. Some richer retrieval-side features added noise or overfit weak-label patterns, while the lightweight `query_match` family produced the most useful and transferable gains. This phase therefore shifted the router from a largely query-only selector to a model that could also use targeted retrieval evidence.
+
+#### Phase 4: Supervision And Decision Calibration
+
+Phase 4 extended the project beyond feature design and focused on two higher-level questions:
+
+- how should the router be supervised?
+- how should uncertain router decisions be handled?
+
+This phase emphasized:
+
+- cleaner weak supervision, especially on SCIDOCS
+- threshold tuning
+- fallback-policy ablations
+- cross-dataset validation of the `query_match` feature family
+
+The most important outcome of Phase 4 was not just a better single score. It was a stronger dataset-aware conclusion. The same `query_match` feature family remained useful across datasets, but the best fallback and threshold settings did not transfer uniformly. SCIDOCS benefited from a more conservative threshold, while NFCorpus and SciFact did not. That result strengthened the project's main claim that the router should be treated as a dataset-aware decision layer rather than as a universally fixed component.
+
 ## 6. Evaluation Protocol
 
 The main ranking metrics are:
@@ -122,71 +166,160 @@ The report treats MRR@10 as the main top-rank-sensitive metric, while Recall@10 
 
 ### 7.1 SciFact
 
-| Method | Recall@10 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: |
-| Sparse | 0.7757 | 0.6184 | 0.6523 |
-| Dense | 0.7900 | 0.6055 | 0.6479 |
-| Hybrid | 0.8306 | 0.6563 | 0.6939 |
-| Router | 0.8107 | 0.6608 | 0.6945 |
-| Oracle | 0.8662 | 0.7337 | 0.7606 |
+| Method | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) | Avg Tokens | Avg Cost (USD) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sparse | 0.7757 | 0.6184 | 0.6523 | 116.61 | 2274.36 | 0.004549 |
+| Dense | 0.7900 | 0.6055 | 0.6479 | 30.20 | 2165.38 | 0.004331 |
+| Hybrid | 0.8306 | 0.6563 | 0.6939 | 152.56 | 2208.98 | 0.004418 |
+| Router | 0.8107 | 0.6608 | 0.6945 | 128.03 | 2210.93 | 0.004422 |
+| Oracle | 0.8662 | 0.7337 | 0.7606 | 131.72 | 2207.13 | 0.004414 |
 
 SciFact provides the cleanest success case. Hybrid retrieval is the strongest fixed baseline, but the learned router slightly outperforms it on both MRR@10 and nDCG@10. This shows that adaptive routing can improve over a strong fixed retrieval strategy in practice.
 
-A Phase 3 follow-up on SciFact tested the same lightweight query-to-top-document match features that were later successful on the other main datasets. On SciFact, this refinement improved Recall@10, nDCG@10, and router accuracy, while causing a small decrease in MRR@10. So the Phase 3 SciFact result is best interpreted as competitive rather than clearly better, but it still shows that the same router-improvement idea remains viable on the third main dataset.
+A later SciFact follow-up tested the same lightweight query-to-top-document match features that were successful on SCIDOCS and NFCorpus. On SciFact, this refinement improved `nDCG@10` from `0.6945` to `0.6982` and kept `MRR@10` close to the best router, but it did not surpass the original query-only router on `MRR@10`. A later threshold check also showed that increasing the confidence threshold from `0.45` to `0.50` did not help on SciFact. So the SciFact phase4 result is best interpreted as competitive rather than clearly better, but it still shows that the same router-improvement idea remains viable on the third main dataset.
 
 ### 7.2 SCIDOCS
 
-| Method | Recall@10 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: |
-| Sparse | 0.1660 | 0.3020 | 0.1669 |
-| Dense | 0.2510 | 0.3723 | 0.2307 |
-| Hybrid | 0.2428 | 0.3432 | 0.2178 |
-| Router | 0.2490 | 0.3740 | 0.2284 |
-| Oracle | 0.2635 | 0.4636 | 0.2600 |
+| Method | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) | Avg Tokens | Avg Cost (USD) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sparse | 0.1660 | 0.3020 | 0.1669 | 250.56 | 1768.68 | 0.003537 |
+| Dense | 0.2510 | 0.3723 | 0.2307 | 13.38 | 1640.18 | 0.003280 |
+| Hybrid | 0.2428 | 0.3432 | 0.2178 | 267.89 | 1711.22 | 0.003422 |
+| Router | 0.2500 | 0.3801 | 0.2309 | 64.92 | 1646.21 | 0.003292 |
+| Oracle | 0.2635 | 0.4636 | 0.2600 | 206.13 | 1700.97 | 0.003402 |
 
-SCIDOCS behaves differently from SciFact. Here, dense retrieval is the strongest fixed baseline. The default router was not enough, but after improving the weak-label design and adding retrieval-confidence features, the router slightly outperformed fixed dense on MRR@10. This result is important because it shows that the best router recipe is not universal across datasets.
+SCIDOCS behaves differently from SciFact. Here, dense retrieval is the strongest fixed baseline. The default router was not enough, but a sequence of targeted improvements made routing effective on this dataset. First, dense-favoring margin-aware weak labels removed much of the earlier supervision noise. Second, retrieval-confidence features and lightweight query-to-top-document match features improved the router's ability to distinguish truly dense-friendly queries from ambiguous ones. Third, tuning the fallback threshold from `0.45` to `0.50` produced the strongest SCIDOCS result.
 
-A later Phase 3 refinement also showed that the SCIDOCS router could be improved further. Adding lightweight query-to-top-document match features increased the router from `MRR@10 = 0.3740` to `0.3771`, while also improving `nDCG@10` from `0.2284` to `0.2306`. This matters because it shows that the router is not only effective, but also improvable through targeted feature design.
+The final Phase 4 SCIDOCS router reached `MRR@10 = 0.3801`, compared with `0.3723` for fixed `dense`. Its final recipe used:
+
+- margin-aware weak labels
+- `basic + query_match` retrieval-side features
+- `dense` fallback
+- confidence threshold `0.50`
+
+This matters because it shows that the SCIDOCS router improved not only through better features, but also through better routing policy design. It also reinforces a broader conclusion of the project: router quality depends on supervision design and decision calibration, not only on the underlying classifier.
 
 ### 7.3 NFCorpus
 
 #### Test-Split Comparison
 
-| Method | Recall@10 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: |
-| Sparse | 0.1522 | 0.5085 | 0.3062 |
-| Dense | 0.1590 | 0.5055 | 0.3191 |
-| Hybrid | 0.1639 | 0.5455 | 0.3368 |
-| Default Router | 0.1690 | 0.5381 | 0.3408 |
-| Oracle | 0.1763 | 0.6124 | 0.3606 |
+| Method | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) | Avg Tokens | Avg Cost (USD) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sparse | 0.1522 | 0.5085 | 0.3062 | 4.26 | 2287.84 | 0.004576 |
+| Dense | 0.1590 | 0.5055 | 0.3191 | 4.99 | 2223.24 | 0.004446 |
+| Hybrid | 0.1639 | 0.5455 | 0.3368 | 8.67 | 2221.55 | 0.004443 |
+| Default Router | 0.1690 | 0.5381 | 0.3408 | 7.15 | 2235.74 | 0.004471 |
+| Oracle | 0.1763 | 0.6124 | 0.3606 | 7.73 | 2236.24 | 0.004472 |
 
 On the final test split, hybrid retrieval is the strongest fixed baseline. The default query-only router improves Recall@10 and nDCG@10, but it does not exceed fixed hybrid on MRR@10. This means the default router is promising, but not yet the right final policy for this dataset.
 
 #### Validation-Based Recipe Selection
 
-| Configuration | Accuracy | Recall@10 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: | ---: |
-| Retrieval features + dense fallback | 0.5710 | 0.1373 | 0.5184 | 0.3066 |
-| Retrieval features + hybrid fallback | 0.6481 | 0.1398 | 0.5241 | 0.3102 |
-| Retrieval features + hybrid fallback + threshold 0.5 | 0.6698 | 0.1429 | 0.5222 | 0.3131 |
-| Retrieval features + hybrid fallback + multi-metric labels | 0.5123 | 0.1379 | 0.5185 | 0.3132 |
-| Fixed Hybrid Baseline | - | 0.1388 | 0.5110 | 0.3084 |
+| Configuration | Accuracy | Recall@10 | MRR@10 | nDCG@10 | Avg Latency (ms) | Avg Tokens | Avg Cost (USD) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Retrieval features + dense fallback | 0.5710 | 0.1373 | 0.5184 | 0.3066 | 6.44 | 2215.77 | 0.004432 |
+| Retrieval features + hybrid fallback | 0.6481 | 0.1398 | 0.5241 | 0.3102 | 6.74 | 2215.80 | 0.004432 |
+| Retrieval features + hybrid fallback + threshold 0.5 | 0.6698 | 0.1429 | 0.5222 | 0.3131 | 7.01 | 2210.60 | 0.004421 |
+| Retrieval features + hybrid fallback + multi-metric labels | 0.5123 | 0.1379 | 0.5185 | 0.3132 | 7.31 | 2203.48 | 0.004407 |
+| Fixed Hybrid Baseline | - | 0.1388 | 0.5110 | 0.3084 | 8.08 | 2204.09 | 0.004408 |
 
 NFCorpus provides a different kind of evidence than SciFact and SCIDOCS. Its main contribution is to show that router quality depends strongly on dataset-aware fallback design. The best fixed retriever on NFCorpus is hybrid, not dense. As a result, using dense as the default fallback was a poor safety policy. Once the fallback was changed to hybrid and retrieval-confidence features were enabled, the router surpassed fixed hybrid on validation metrics. This is strong support for the broader thesis that both retrieval preference and router recipe are dataset-dependent.
 
-Phase 3 produced a further positive result on NFCorpus. When the same lightweight query-to-top-document match features were added to the strongest `hybrid`-fallback router, the validation result improved from `MRR@10 = 0.5241` to `0.5270`, and `nDCG@10` improved from `0.3102` to `0.3144`. This is especially useful because it shows that the same router-improvement idea helped on a second dataset rather than only on SCIDOCS.
+Later NFCorpus experiments sharpened that conclusion further. When the same lightweight query-to-top-document match features were added to the strongest `hybrid`-fallback router, the validation result improved from `MRR@10 = 0.5241` to `0.5270`, and `nDCG@10` improved from `0.3102` to `0.3144`. A follow-up threshold ablation then showed that NFCorpus behaved differently from SCIDOCS: raising the confidence threshold from `0.45` to `0.50` reduced `MRR@10` from `0.5270` to `0.5177`. This is especially useful because it shows two things at once:
 
-## 8. Supplemental Result: FiQA
+- the `query_match` feature family transfers across datasets
+- the best confidence calibration rule still remains dataset-specific
 
-| Method | Recall@10 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: |
-| Sparse | 0.2784 | 0.2713 | 0.2175 |
-| Dense | 0.4389 | 0.4463 | 0.3687 |
-| Hybrid | 0.4308 | 0.4095 | 0.3442 |
-| Best FiQA Router Tested | 0.4322 | 0.4342 | 0.3591 |
-| Oracle | 0.4859 | 0.5510 | 0.4311 |
+## 8. Phase-By-Phase Results And Conclusions
 
-FiQA is a useful negative result. Dense retrieval is the strongest fixed baseline, and the best router variant tested still does not surpass it. This strengthens the report because it shows that the project does not assume a router is always better. Instead, the correct conclusion is conditional: routing should be used when it wins empirically, not by default.
+The router contribution became stronger across the four project phases because each phase answered a different question and added a different type of evidence.
+
+### 8.1 Phase 1
+
+Phase 1 established the baseline MultiplexRAG setting and showed that fixed sparse, dense, and hybrid retrieval behaved differently enough to make query-aware routing a meaningful problem. The Phase 1 router itself was still relatively simple, but the experiments already showed that no single retrieval branch dominated uniformly across query types.
+
+Representative Phase 1 results:
+
+| Dataset | Best Fixed | Router Recall@10 | Router MRR@10 | Router nDCG@10 | Router Latency (ms) | Router Tokens | Router Cost (USD) | Best Fixed MRR@10 | Oracle MRR@10 | Main Reading |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SciFact | Hybrid | 0.8107 | 0.6608 | 0.6945 | 42.92 | 2210.93 | 0.004422 | 0.6563 | 0.7337 | router already looked promising |
+| SCIDOCS | Dense | 0.2480 | 0.3620 | 0.2277 | 135.15 | 1674.83 | 0.003350 | 0.3723 | 0.4636 | router still lagged the strongest fixed baseline |
+
+The most important Phase 1 evidence was therefore not only the router score itself, but also the structure of the comparison:
+
+- fixed best retrieval already differed by dataset
+- the oracle remained clearly stronger than the learned router
+- the baseline router was strong enough to justify further work, but not yet strong enough to end the project story
+
+The Phase 1 conclusion was:
+
+`query-aware routing is worth studying, but the initial router is only a starting point.`
+
+### 8.2 Phase 2
+
+Phase 2 produced the first strong query-only router. This phase added richer query features, hashed lexical features, a logistic-regression classifier, and confidence-aware fallback.
+
+Representative Phase 2 results:
+
+| Dataset | Phase 2 Router Recipe | Recall@10 | MRR@10 | nDCG@10 | Latency (ms) | Tokens | Cost (USD) | Strongest Fixed MRR@10 | Delta |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SciFact | query-only router | 0.8107 | 0.6608 | 0.6945 | 128.03 | 2210.93 | 0.004422 | 0.6563 (`hybrid`) | +0.0045 |
+| SCIDOCS | margin-aware + retrieval features | 0.2490 | 0.3740 | 0.2284 | 112.94 | 1662.21 | 0.003324 | 0.3723 (`dense`) | +0.0018 |
+| NFCorpus | retrieval features + hybrid fallback | 0.1398 | 0.5241 | 0.3102 | 6.74 | 2215.80 | 0.004432 | 0.5110 (`hybrid`, validation) | +0.0131 |
+
+The main Phase 2 conclusion was:
+
+`a lightweight router can beat strong fixed baselines, but the best router recipe is already dataset-dependent.`
+
+### 8.3 Phase 3
+
+Phase 3 focused on feature design rather than replacing the classifier again. It tested several retrieval-side feature families and found that the most useful new signal was not richer cross-branch metadata, but lightweight query-to-top-document match features.
+
+Representative Phase 3 results:
+
+| Dataset | Phase 2 Reference MRR@10 | Phase 3 Query-Match Recall@10 | Phase 3 Query-Match MRR@10 | Phase 3 Query-Match nDCG@10 | Phase 3 Latency (ms) | Phase 3 Tokens | Phase 3 Cost (USD) | Main Effect |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SCIDOCS | 0.3740 | 0.2485 | 0.3771 | 0.2306 | 49.98 | 1650.40 | 0.003301 | clear positive gain |
+| NFCorpus | 0.5241 | 0.1420 | 0.5270 | 0.3144 | 6.54 | 2220.04 | 0.004440 | clear positive gain |
+| SciFact | 0.6608 | 0.8303 | 0.6585 | 0.6982 | 19.05 | 2208.17 | 0.004416 | competitive on MRR, stronger on nDCG |
+
+The main Phase 3 conclusion was:
+
+`targeted query-match features are more useful than simply adding larger or richer retrieval-side feature blocks.`
+
+### 8.4 Phase 4
+
+Phase 4 extended the project from feature design into supervision design and decision calibration. This phase tested whether the best router still depended on threshold choice, fallback policy, and the interaction between those choices and the dataset.
+
+Representative Phase 4 results:
+
+| Dataset | Best Phase 4 Recipe | Recall@10 | MRR@10 | nDCG@10 | Latency (ms) | Tokens | Cost (USD) | Strongest Fixed MRR@10 | Main Phase 4 Finding |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| SCIDOCS | margin + `basic + query_match` + `dense` fallback + `t=0.50` | 0.2500 | 0.3801 | 0.2309 | 64.92 | 1646.21 | 0.003292 | 0.3723 | supervision and threshold tuning mattered |
+| NFCorpus | `basic + query_match` + `hybrid` fallback + `t=0.45` | 0.1420 | 0.5270 | 0.3144 | 6.54 | 2220.04 | 0.004440 | 0.5110 | feature transfer worked, but threshold stayed dataset-specific |
+| SciFact | original query-only router remained best | 0.8107 | 0.6608 | 0.6945 | 42.30 | 2210.93 | 0.004422 | 0.6563 | later feature-rich variants stayed competitive, not strictly better |
+
+The Phase 4 threshold tests were especially important:
+
+| Dataset | `t=0.45` Recall@10 | `t=0.45` MRR@10 | `t=0.50` Recall@10 | `t=0.50` MRR@10 | Threshold Effect |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SCIDOCS | 0.2485 | 0.3771 | 0.2500 | 0.3801 | higher threshold helped |
+| NFCorpus | 0.1420 | 0.5270 | 0.1428 | 0.5177 | higher threshold hurt |
+| SciFact | 0.8303 | 0.6585 | 0.8312 | 0.6559 | higher threshold hurt |
+
+The main Phase 4 conclusion was:
+
+`the transferable part of the later router design is the targeted feature family, but supervision and decision calibration still remain dataset-specific.`
+
+### 8.5 Overall Phase Conclusion
+
+Taken together, the four phases support one consistent project conclusion.
+
+Phase 1 showed that routing was worth studying. Phase 2 showed that a lightweight router could become competitive or better than strong fixed baselines. Phase 3 showed which new retrieval-side signals were actually useful. Phase 4 then showed that the best router is not defined only by features or model choice, but also by how weak supervision and decision calibration are matched to the dataset.
+
+So the final phase-by-phase conclusion is:
+
+`MultiplexRAG succeeds not because there is one universally best router, but because routing can be improved step by step into a dataset-aware decision layer.`
 
 ## 9. Cross-Dataset Findings
 
@@ -197,15 +330,13 @@ The project produces four main cross-dataset conclusions.
 - SciFact favors hybrid retrieval.
 - SCIDOCS favors dense retrieval.
 - NFCorpus favors hybrid retrieval.
-- FiQA favors dense retrieval.
-
 This directly supports the original motivation for MultiplexRAG.
 
 ### 9.2 A Router Can Improve Over Strong Baselines
 
-- On SciFact, the router beats fixed hybrid.
-- On SCIDOCS, the improved router beats fixed dense.
-- On NFCorpus, router gains become convincing only after dataset-specific fallback tuning and retrieval-confidence features are introduced.
+- On SciFact, the router beats fixed hybrid, while later feature-rich variants remain competitive without clearly improving the strongest original router.
+- On SCIDOCS, the improved router beats fixed dense, with the strongest gains coming from cleaner weak labels, query-match features, and a more conservative fallback threshold.
+- On NFCorpus, router gains become convincing only after dataset-specific fallback tuning and retrieval-side features are introduced, while threshold tuning remains dataset-specific.
 
 So the core project hypothesis is supported, but the supporting evidence is not identical across datasets.
 
@@ -213,12 +344,10 @@ So the core project hypothesis is supported, but the supporting evidence is not 
 
 The datasets do not merely differ in which fixed retriever is strongest. They also differ in which router improvement matters most.
 
-- SciFact works best with the default Phase 2 router recipe, while the later query-match refinement remains competitive.
-- SCIDOCS benefits most from improved weak supervision plus retrieval-confidence features.
-- NFCorpus benefits most from retrieval-confidence features plus a hybrid fallback policy.
-- FiQA does not yet justify router deployment.
-
-Phase 3 further sharpens this conclusion. Not every richer retrieval feature was helpful, but a more targeted query-match feature family improved the router on both SCIDOCS and NFCorpus and remained competitive on SciFact. So the project does not just show that routing can work. It also shows that the router can be improved through principled, dataset-tested design changes.
+- SciFact works best with the default lightweight router recipe, while the later query-match refinement remains competitive and improves `nDCG@10` without becoming the top `MRR@10` model.
+- SCIDOCS benefits most from improved weak supervision, targeted query-match features, and conservative dense-fallback routing.
+- NFCorpus benefits most from retrieval-confidence features, query-match signals, and a hybrid fallback policy, but not from the same threshold change that helped on SCIDOCS.
+Later experiments further sharpen this conclusion. Not every richer retrieval feature was helpful, but a more targeted query-match feature family improved the router on both SCIDOCS and NFCorpus and remained competitive on SciFact. At the same time, the threshold ablations showed that even when the same feature family transfers, the best fallback calibration can still differ by dataset. So the project does not just show that routing can work. It also shows that the router can be improved through principled, dataset-tested design changes.
 
 This is one of the most important outcomes of the project.
 
@@ -230,11 +359,11 @@ Across all datasets, the oracle remains much stronger than the learned router. T
 
 The final report does not support the simplistic claim that one router design is best everywhere. A more accurate conclusion is that MultiplexRAG works as a dataset-aware retrieval-routing framework.
 
-SciFact provides the cleanest success case: the router beats the best fixed retriever directly. SCIDOCS provides a more nuanced success case: the router only wins after the weak-label design is corrected. NFCorpus contributes a third kind of evidence: success depends heavily on choosing the right fallback policy for the dataset. FiQA then provides an important boundary condition by showing that some datasets still favor a fixed retriever.
+SciFact provides the cleanest success case: the router beats the best fixed retriever directly, and later feature-rich variants remain competitive rather than replacing it. SCIDOCS provides a more nuanced success case: the router only wins after weak-label design, feature design, and fallback calibration are all adjusted to match the dataset. NFCorpus contributes a third kind of evidence: the same feature family can transfer across datasets, while the best threshold and fallback calibration still depend on the dataset.
 
 Together, these outcomes make the project stronger rather than weaker. They show that the central idea is valid, but only when evaluated carefully and adapted to the retrieval setting.
 
-The Phase 3 refinement strengthens this interpretation further. The project was not limited to a single successful router snapshot. It also demonstrated that the router could be iteratively improved in a measurable way through better feature design, with clear gains appearing on SCIDOCS and NFCorpus and competitive behavior on SciFact.
+The later router refinements strengthen this interpretation further. The project was not limited to a single successful router snapshot. It also demonstrated that the router could be iteratively improved in a measurable way through better supervision, better feature design, and better fallback calibration, with clear gains appearing on SCIDOCS and NFCorpus and competitive behavior on SciFact. Just as importantly, the later SciFact and NFCorpus threshold checks showed that not every decision-rule improvement transfers across datasets, which further supports the dataset-aware interpretation.
 
 ## 11. Limitations
 
@@ -244,16 +373,100 @@ The project also has several limitations.
 - SCIDOCS router training relies on a query-level self-split rather than an official train/test router split.
 - Router labels are weak labels derived from retrieval outcomes rather than human query-type annotations.
 - The learned router remains below the oracle upper bound on every dataset.
-- FiQA still favors a fixed dense retriever.
-
 These limitations do not invalidate the results, but they do define the boundary of the current contribution.
 
-## 12. Conclusion
+## 12. Further Router Improvement Experiments
+
+The current project already shows that query-aware routing can improve retrieval, and the later SCIDOCS and NFCorpus refinements further reinforce that conclusion. At the same time, the project also makes clear that future router gains will likely come from better supervision and better decision design rather than from indiscriminately increasing model complexity. Based on the empirical findings from SciFact, SCIDOCS, and NFCorpus, the most promising next step is to continue evaluating router improvements through a controlled experimental plan.
+
+The guiding question for the next extension stage is:
+
+`how can the router improve retrieval quality without introducing unnecessary latency or token cost?`
+
+To answer that question, the next router experiments should compare not only ranking quality, but also efficiency and robustness. The strongest hypothesis from the current project is that router quality depends on three interacting factors:
+
+- the quality of weak labels
+- the usefulness of retrieval-side features
+- the decision rule used when the router is uncertain
+
+### 12.1 Experimental Objectives
+
+The next router study should pursue three objectives.
+
+First, it should test whether cleaner weak supervision improves routing more than a more complex classifier. This is especially important on SCIDOCS, where earlier error analysis showed that dense-hybrid ties created label noise and biased the router toward `hybrid`.
+
+Second, it should identify which retrieval-side signals provide useful routing information. Phase 3 already showed that simply adding more retrieval metadata is not always helpful. In particular, `agreement_rich` features were not effective, while lightweight query-to-top-document match features produced more consistent gains.
+
+Third, it should move the router closer to the real project objective by evaluating whether routing decisions can be optimized for retrieval utility rather than only for weak-label classification accuracy.
+
+### 12.2 Experimental Grid
+
+The next experimental grid should include the following router variants.
+
+| Experiment ID | Configuration | Main Change | Purpose |
+| --- | --- | --- | --- |
+| E0 | Fixed Dense | No router | strongest dense baseline |
+| E1 | Fixed Hybrid | No router | strongest hybrid baseline |
+| E2 | Current Best Router | current dataset-aware preset | reproduction baseline |
+| E3 | Margin-Aware Labels | improved tie and near-tie handling | test supervision quality |
+| E4 | Margin-Aware + Basic Retrieval Features | add retrieval-confidence signals after label cleanup | test whether cleaner supervision unlocks feature gains |
+| E5 | Margin-Aware + Basic + Query-Match Features | add lightweight query-document match signals | test the strongest current feature hypothesis |
+| E6 | Margin-Aware + Query-Match + Threshold Tuning | calibrate fallback decision | test uncertainty handling |
+| E7 | Ambiguous-Query Filtering | remove or skip near-tie training examples | reduce weak-label noise |
+| E8 | Utility-Aware Router | predict branch utility instead of only branch class | optimize quality-cost tradeoff directly |
+
+This grid is intentionally structured so that each experiment isolates one design choice. The goal is not to search a large hyperparameter space blindly, but to make the source of each gain or regression explainable.
+
+### 12.3 Evaluation Criteria
+
+All router variants should be evaluated with the same core metrics:
+
+- Recall@10
+- MRR@10
+- nDCG@10
+- average latency
+- average retrieved-token count
+- average estimated cost
+
+Router classification accuracy should still be reported, but only as a secondary diagnostic measure. The current project already shows that higher classification accuracy does not always imply better retrieval quality. Therefore, the primary comparison should remain ranking quality and efficiency rather than agreement with weak labels alone.
+
+In addition to the standard metrics, the experiments should also record:
+
+- train and test label distributions
+- predicted label distributions
+- the frequency of `dense -> hybrid` routing errors
+- the frequency of `hybrid -> dense` routing errors
+
+These error categories are important because the SCIDOCS analysis showed that not all router mistakes are equally costly. Misrouting truly dense-friendly queries away from `dense` caused much larger ranking loss than some other nominal classification errors.
+
+### 12.4 Experimental Phases
+
+The experiments should be run in four stages.
+
+The first stage should reproduce the strongest current baselines for each dataset. This includes the best fixed retriever and the current best router configuration. The purpose of this stage is to create a stable reference point for every later comparison.
+
+The second stage should focus only on weak-label design. This stage should compare the current label rule with dense-favoring tie handling, near-tie margins, and ambiguous-query filtering. The main question is whether better supervision alone improves routing.
+
+The third stage should focus only on retrieval-side features. This stage should compare query-only routing, `basic` retrieval-confidence features, and `basic + query_match` features. Based on the current results, this stage is expected to confirm that carefully targeted query-document matching signals are more useful than simply adding many richer retrieval features.
+
+The fourth stage should focus on the routing decision rule itself. This stage should tune the fallback threshold, test calibrated confidence handling, and compare the standard classifier to a utility-aware variant. The goal is to determine whether the router can make better choices when retrieval quality, latency, and cost are considered jointly.
+
+### 12.5 Expected Contribution
+
+If successful, this experiment plan would strengthen the project in three ways.
+
+First, it would make the router contribution more rigorous by showing which improvements are truly causal rather than accidental.
+
+Second, it would reinforce one of the report's central claims: router quality depends more on dataset-aware supervision and targeted routing signals than on raw model complexity alone.
+
+Third, it would create a clearer path toward a practically useful router that chooses retrieval branches not only for ranking quality, but also for efficiency. That would move the project closer to the full MultiplexRAG motivation, where routing is valuable because it improves the retrieval quality-cost tradeoff rather than simply adding another classifier on top of retrieval.
+
+## 13. Conclusion
 
 This project asked whether a query-aware router could improve retrieval over a single fixed strategy by choosing among sparse, dense, and hybrid retrieval. The answer is yes, with an important qualification: the best routing policy depends on the dataset.
 
-SciFact shows that a lightweight router can beat the strongest fixed baseline directly. SCIDOCS shows that routing gains depend on better supervision and retrieval-side evidence. NFCorpus shows that routing gains can depend most strongly on choosing the right fallback policy for the dataset. FiQA shows that routing should not be adopted when a fixed dense retriever remains stronger.
+SciFact shows that a lightweight router can beat the strongest fixed baseline directly, while later feature-rich variants remain competitive rather than strictly better. SCIDOCS shows that routing gains depend on better supervision, targeted retrieval-side evidence, and conservative fallback calibration. NFCorpus shows that routing gains can depend strongly on choosing the right fallback policy for the dataset, while still requiring dataset-specific threshold calibration.
 
-The Phase 3 results strengthen the project's main contribution further. Lightweight query-to-top-document match features improved the router on both SCIDOCS and NFCorpus and remained competitive on SciFact. This shows that the router is not just effective once; it can also be improved through targeted and interpretable feature engineering.
+The later refinement results strengthen the project's main contribution further. Lightweight query-to-top-document match features improved the router on both SCIDOCS and NFCorpus and remained competitive on SciFact. On SCIDOCS, a later threshold-tuning ablation pushed the best router to `MRR@10 = 0.3801`, while SciFact and NFCorpus showed that the same threshold change does not transfer universally. Together, these results further show that the router is not just effective once; it can also be improved through targeted and interpretable design changes.
 
 The final conclusion is therefore not that there is one universally best retriever or one universally best router. The real conclusion is that retrieval routing works best when it is treated as a dataset-aware decision problem. That is the central contribution of this MultiplexRAG project.

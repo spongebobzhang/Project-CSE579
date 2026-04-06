@@ -59,15 +59,35 @@ Run the whole pipeline for one prepared dataset:
 ./.venv/bin/python scripts/run_pipeline.py --dataset-dir data/scidocs
 ```
 
-By default, the pipeline now uses `--router-preset auto`, which selects the current best-known router configuration for each dataset:
+By default, the pipeline now uses `--router-preset auto`, which selects the current best integrated router configuration for each dataset inside `scripts/run_pipeline.py`:
 
 - `scifact`: default Phase 2 router
 - `scidocs`: margin-aware dense-favoring labels + retrieval-confidence features
 
-Current best one-command results:
+Current best integrated one-command results:
 
 - `scifact`: router `MRR@10 = 0.6608`, slightly above fixed `hybrid = 0.6563`
 - `scidocs`: router `MRR@10 = 0.3740`, slightly above fixed `dense = 0.3723`
+
+Latest experimental best results may be higher than the built-in pipeline preset. For example, later Phase 4 experiments reached:
+
+- `scidocs`: router `MRR@10 = 0.3801`
+- `nfcorpus`: router `MRR@10 = 0.5270` on the validation split
+
+That stronger SCIDOCS result used:
+
+- margin-aware weak labels
+- `basic + query_match` retrieval-side features
+- `dense` fallback
+- confidence threshold `0.50`
+
+The stronger NFCorpus result used:
+
+- `basic + query_match` retrieval-side features
+- `hybrid` fallback
+- confidence threshold `0.45`
+
+Those Phase 4 experiments are stored under `phase4/` and are not yet wired into `scripts/run_pipeline.py --router-preset auto`.
 
 If you only want baselines and evaluation first:
 
@@ -166,7 +186,7 @@ You can also force a preset manually:
 - `scifact`: `scifact-best` or `auto`
 - `scidocs`: `scidocs-best` or `auto`
 
-In practice, `auto` is the recommended option because it already maps each supported dataset to its current best-known router configuration.
+In practice, `auto` is the recommended option for the integrated one-command pipeline. If you want the strongest later experimental SCIDOCS or NFCorpus routers, use the Phase 4 scripts and artifacts under `phase4/` instead of relying only on the built-in preset.
 
 ## 8) Notes
 
