@@ -351,9 +351,6 @@ Later experiments further sharpen this conclusion. Not every richer retrieval fe
 
 This is one of the most important outcomes of the project.
 
-### 9.4 There Is Still A Large Oracle Gap
-
-Across all datasets, the oracle remains much stronger than the learned router. That means the project succeeded in showing the value of adaptive routing, but it also leaves clear room for future improvement.
 
 ## 10. Discussion
 
@@ -375,93 +372,9 @@ The project also has several limitations.
 - The learned router remains below the oracle upper bound on every dataset.
 These limitations do not invalidate the results, but they do define the boundary of the current contribution.
 
-## 12. Further Router Improvement Experiments
 
-The current project already shows that query-aware routing can improve retrieval, and the later SCIDOCS and NFCorpus refinements further reinforce that conclusion. At the same time, the project also makes clear that future router gains will likely come from better supervision and better decision design rather than from indiscriminately increasing model complexity. Based on the empirical findings from SciFact, SCIDOCS, and NFCorpus, the most promising next step is to continue evaluating router improvements through a controlled experimental plan.
 
-The guiding question for the next extension stage is:
-
-`how can the router improve retrieval quality without introducing unnecessary latency or token cost?`
-
-To answer that question, the next router experiments should compare not only ranking quality, but also efficiency and robustness. The strongest hypothesis from the current project is that router quality depends on three interacting factors:
-
-- the quality of weak labels
-- the usefulness of retrieval-side features
-- the decision rule used when the router is uncertain
-
-### 12.1 Experimental Objectives
-
-The next router study should pursue three objectives.
-
-First, it should test whether cleaner weak supervision improves routing more than a more complex classifier. This is especially important on SCIDOCS, where earlier error analysis showed that dense-hybrid ties created label noise and biased the router toward `hybrid`.
-
-Second, it should identify which retrieval-side signals provide useful routing information. Phase 3 already showed that simply adding more retrieval metadata is not always helpful. In particular, `agreement_rich` features were not effective, while lightweight query-to-top-document match features produced more consistent gains.
-
-Third, it should move the router closer to the real project objective by evaluating whether routing decisions can be optimized for retrieval utility rather than only for weak-label classification accuracy.
-
-### 12.2 Experimental Grid
-
-The next experimental grid should include the following router variants.
-
-| Experiment ID | Configuration | Main Change | Purpose |
-| --- | --- | --- | --- |
-| E0 | Fixed Dense | No router | strongest dense baseline |
-| E1 | Fixed Hybrid | No router | strongest hybrid baseline |
-| E2 | Current Best Router | current dataset-aware preset | reproduction baseline |
-| E3 | Margin-Aware Labels | improved tie and near-tie handling | test supervision quality |
-| E4 | Margin-Aware + Basic Retrieval Features | add retrieval-confidence signals after label cleanup | test whether cleaner supervision unlocks feature gains |
-| E5 | Margin-Aware + Basic + Query-Match Features | add lightweight query-document match signals | test the strongest current feature hypothesis |
-| E6 | Margin-Aware + Query-Match + Threshold Tuning | calibrate fallback decision | test uncertainty handling |
-| E7 | Ambiguous-Query Filtering | remove or skip near-tie training examples | reduce weak-label noise |
-| E8 | Utility-Aware Router | predict branch utility instead of only branch class | optimize quality-cost tradeoff directly |
-
-This grid is intentionally structured so that each experiment isolates one design choice. The goal is not to search a large hyperparameter space blindly, but to make the source of each gain or regression explainable.
-
-### 12.3 Evaluation Criteria
-
-All router variants should be evaluated with the same core metrics:
-
-- Recall@10
-- MRR@10
-- nDCG@10
-- average latency
-- average retrieved-token count
-- average estimated cost
-
-Router classification accuracy should still be reported, but only as a secondary diagnostic measure. The current project already shows that higher classification accuracy does not always imply better retrieval quality. Therefore, the primary comparison should remain ranking quality and efficiency rather than agreement with weak labels alone.
-
-In addition to the standard metrics, the experiments should also record:
-
-- train and test label distributions
-- predicted label distributions
-- the frequency of `dense -> hybrid` routing errors
-- the frequency of `hybrid -> dense` routing errors
-
-These error categories are important because the SCIDOCS analysis showed that not all router mistakes are equally costly. Misrouting truly dense-friendly queries away from `dense` caused much larger ranking loss than some other nominal classification errors.
-
-### 12.4 Experimental Phases
-
-The experiments should be run in four stages.
-
-The first stage should reproduce the strongest current baselines for each dataset. This includes the best fixed retriever and the current best router configuration. The purpose of this stage is to create a stable reference point for every later comparison.
-
-The second stage should focus only on weak-label design. This stage should compare the current label rule with dense-favoring tie handling, near-tie margins, and ambiguous-query filtering. The main question is whether better supervision alone improves routing.
-
-The third stage should focus only on retrieval-side features. This stage should compare query-only routing, `basic` retrieval-confidence features, and `basic + query_match` features. Based on the current results, this stage is expected to confirm that carefully targeted query-document matching signals are more useful than simply adding many richer retrieval features.
-
-The fourth stage should focus on the routing decision rule itself. This stage should tune the fallback threshold, test calibrated confidence handling, and compare the standard classifier to a utility-aware variant. The goal is to determine whether the router can make better choices when retrieval quality, latency, and cost are considered jointly.
-
-### 12.5 Expected Contribution
-
-If successful, this experiment plan would strengthen the project in three ways.
-
-First, it would make the router contribution more rigorous by showing which improvements are truly causal rather than accidental.
-
-Second, it would reinforce one of the report's central claims: router quality depends more on dataset-aware supervision and targeted routing signals than on raw model complexity alone.
-
-Third, it would create a clearer path toward a practically useful router that chooses retrieval branches not only for ranking quality, but also for efficiency. That would move the project closer to the full MultiplexRAG motivation, where routing is valuable because it improves the retrieval quality-cost tradeoff rather than simply adding another classifier on top of retrieval.
-
-## 13. Conclusion
+## 12. Conclusion
 
 This project asked whether a query-aware router could improve retrieval over a single fixed strategy by choosing among sparse, dense, and hybrid retrieval. The answer is yes, with an important qualification: the best routing policy depends on the dataset.
 
