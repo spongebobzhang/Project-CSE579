@@ -193,7 +193,23 @@ You can also force a preset manually:
 
 In practice, `auto` is the recommended option for the integrated one-command pipeline. If you want the strongest later experimental SCIDOCS or NFCorpus routers, use the Phase 4 scripts and artifacts under `phase4/` instead of relying only on the built-in preset.
 
-## 8) Notes
+## 8) Auxiliary tooling (costomato branch)
+
+These helpers do not change retrieval results. They make existing artifacts easier to inspect.
+
+```bash
+python -m unittest discover tests
+python scripts/plot_results.py
+python scripts/dataset_stats.py
+```
+
+- `tests/test_eval_utils.py`: 26 unit tests covering Recall@k, MRR@k, nDCG@k, and the metric dispatcher.
+- `scripts/plot_results.py`: reads `results/<dataset>/eval_*.json` and `router_report.json`, writes per-dataset comparison PNGs and a cross-dataset summary PNG.
+- `scripts/dataset_stats.py`: walks `data/<dataset>/raw/` and writes `results/dataset_stats.json` and `results/dataset_stats.md`. Corpus columns appear once `prepare_data.py` has populated `corpus.jsonl`.
+
+See `CONTRIBUTIONS.md` for the rationale behind each.
+
+## 9) Notes
 
 - The loaders normalize BEIR-style `_id` fields into `doc_id` / `query_id`.
 - If `sentence-transformers` is unavailable, dense retrieval falls back to an offline hashing-based encoder so experiments still run.
